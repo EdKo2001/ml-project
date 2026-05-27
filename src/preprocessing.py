@@ -11,7 +11,6 @@ from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
-
 TARGET_CANDIDATES = ["Machine failure", "machine_failure", "target", "failure"]
 DROP_COLUMNS = ["UDI", "Product ID", "TWF", "HDF", "PWF", "OSF", "RNF"]
 
@@ -20,7 +19,9 @@ def load_data(path: str) -> pd.DataFrame:
     return pd.read_csv(path)
 
 
-def infer_target_column(df: pd.DataFrame, candidates: Iterable[str] = TARGET_CANDIDATES) -> str:
+def infer_target_column(
+    df: pd.DataFrame, candidates: Iterable[str] = TARGET_CANDIDATES
+) -> str:
     for name in candidates:
         if name in df.columns:
             return name
@@ -29,7 +30,11 @@ def infer_target_column(df: pd.DataFrame, candidates: Iterable[str] = TARGET_CAN
 
 def prepare_features_and_target(df: pd.DataFrame, target_column: str | None = None):
     target_column = target_column or infer_target_column(df)
-    drop_columns = [column for column in DROP_COLUMNS if column in df.columns and column != target_column]
+    drop_columns = [
+        column
+        for column in DROP_COLUMNS
+        if column in df.columns and column != target_column
+    ]
     X = df.drop(columns=[target_column] + drop_columns, errors="ignore")
     y = df[target_column]
     return X, y, target_column, drop_columns
@@ -42,7 +47,9 @@ def split_data(
     random_state: int = 42,
 ):
     X, y, _, _ = prepare_features_and_target(df, target)
-    return train_test_split(X, y, test_size=test_size, random_state=random_state, stratify=y)
+    return train_test_split(
+        X, y, test_size=test_size, random_state=random_state, stratify=y
+    )
 
 
 def build_preprocessor(X: pd.DataFrame) -> ColumnTransformer:
@@ -72,7 +79,9 @@ def build_preprocessor(X: pd.DataFrame) -> ColumnTransformer:
     )
 
 
-def make_shared_preprocessing_pipeline(df: pd.DataFrame, target_column: str | None = None):
+def make_shared_preprocessing_pipeline(
+    df: pd.DataFrame, target_column: str | None = None
+):
     X, y, target_column, drop_columns = prepare_features_and_target(df, target_column)
     preprocessor = build_preprocessor(X)
     return {
