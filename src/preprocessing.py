@@ -12,6 +12,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 TARGET_CANDIDATES = ["Machine failure", "machine_failure", "target", "failure"]
+FAILURE_TYPE_CANDIDATES = ["Failure Type", "Failure_Type", "failure_type", "failuretype"]
 DROP_COLUMNS = ["UDI", "Product ID", "TWF", "HDF", "PWF", "OSF", "RNF"]
 
 
@@ -30,11 +31,15 @@ def infer_target_column(
 
 def prepare_features_and_target(df: pd.DataFrame, target_column: str | None = None):
     target_column = target_column or infer_target_column(df)
+    # Start with the standard drop list and also drop any Failure Type-like columns
     drop_columns = [
         column
         for column in DROP_COLUMNS
         if column in df.columns and column != target_column
     ]
+    for cand in FAILURE_TYPE_CANDIDATES:
+        if cand in df.columns and cand != target_column and cand not in drop_columns:
+            drop_columns.append(cand)
     X = df.drop(columns=[target_column] + drop_columns, errors="ignore")
     y = df[target_column]
     return X, y, target_column, drop_columns
