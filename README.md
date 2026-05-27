@@ -17,6 +17,29 @@ Shared setup for the CS582 predictive maintenance project.
 3. Check target balance and basic feature types.
 4. Build one preprocessing pipeline that everyone uses.
 
+## Recommended versions & setup
+
+Use a recent stable Python 3 release. We recommend Python 3.10, 3.11, or 3.12 for compatibility with the libraries used in this project.
+
+Use either the classic Jupyter Notebook or JupyterLab to run the notebooks. Recommended versions:
+- Python: 3.10 - 3.12
+- Jupyter Notebook: >=6.0 or JupyterLab: >=3.0
+
+Quick setup (Windows / PowerShell):
+```powershell
+python -m venv .venv
+. .venv\Scripts\Activate.ps1
+pip install -U pip
+pip install -r requirements.txt
+```
+
+Run the shared notebook:
+```powershell
+jupyter notebook notebooks/01_shared_setup.ipynb
+```
+
+If you prefer `conda`, create a conda env and install the dependencies from `requirements.txt` or manually install the packages listed there.
+
 ## Shared pipeline usage
 
 Use the shared entrypoint so everyone loads data, builds preprocessing, and splits the same way:
