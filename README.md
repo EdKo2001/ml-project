@@ -58,6 +58,25 @@ X_train = artifacts.X_train
 y_train = artifacts.y_train
 ```
 
+## Strip notebook outputs on commit (recommended)
+
+Notebook files often contain execution outputs and absolute local paths (usernames, local directories) that make diffs noisy and can leak personal information. We recommend stripping outputs before committing notebooks.
+
+Quick setup (recommended):
+
+PowerShell:
+```powershell
+pip install nbstripout
+nbstripout --install
+```
+
+This installs a git filter that removes cell outputs automatically when you commit `.ipynb` files. Alternatively, to enforce in-repo attributes, add the `.gitattributes` file (already included) and run the above install command.
+
+If you use the `pre-commit` framework, you can add a hook that invokes `nbstripout` or use `nbstripout --install` as part of your onboarding steps.
+
+Why: stripping outputs keeps diffs small, avoids leaking local paths, and makes notebook reviews much cleaner.
+
+
 ## MLP baseline results
 Total records in dataset: 10,000
 Test set (n=2000):
