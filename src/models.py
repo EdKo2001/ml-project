@@ -13,14 +13,17 @@ def get_model(name: str, **kwargs):
     """
     name = name.lower()
     if name in ("decision_tree", "dt"):
-        return DecisionTreeClassifier(random_state=kwargs.get("random_state", 42), **{k: v for k, v in kwargs.items() if k != 'random_state'})
+        params = {"random_state": 42, **kwargs}
+        return DecisionTreeClassifier(**params)
     if name in ("random_forest", "rf"):
-        return RandomForestClassifier(random_state=kwargs.get("random_state", 42), **{k: v for k, v in kwargs.items() if k != 'random_state'})
+        params = {"random_state": 42, **kwargs}
+        return RandomForestClassifier(**params)
     if name in ("svm", "svc"):
-        return SVC(probability=True, random_state=kwargs.get("random_state", 42), **{k: v for k, v in kwargs.items() if k != 'random_state'})
+        params = {"probability": True, "random_state": 42, **kwargs}
+        return SVC(**params)
     if name in ("mlp", "mlpclassifier", "neural_network"):
         # sensible defaults for quick training; callers can override via kwargs
-        defaults = {"hidden_layer_sizes": (100,), "max_iter": 200}
-        params = {**defaults, **{k: v for k, v in kwargs.items() if k != 'random_state'}}
-        return MLPClassifier(random_state=kwargs.get("random_state", 42), **params)
+        defaults = {"hidden_layer_sizes": (100,), "max_iter": 200, "random_state": 42}
+        params = {**defaults, **kwargs}
+        return MLPClassifier(**params)
     raise ValueError(f"Unknown model name: {name}")
