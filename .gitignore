@@ -6,3 +6,4 @@ venv/
 .env
 results/*
 !results/.gitkeep
+!results/feature_sets/.gitkeep

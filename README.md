@@ -17,6 +17,29 @@ Shared setup for the CS582 predictive maintenance project.
 3. Check target balance and basic feature types.
 4. Build one preprocessing pipeline that everyone uses.
 
+## Recommended versions & setup
+
+Use a recent stable Python 3 release. We recommend Python 3.10, 3.11, or 3.12 for compatibility with the libraries used in this project.
+
+Use either the classic Jupyter Notebook or JupyterLab to run the notebooks. Recommended versions:
+- Python: 3.10 - 3.12
+- Jupyter Notebook: >=6.0 or JupyterLab: >=3.0
+
+Quick setup (Windows / PowerShell):
+```powershell
+python -m venv .venv
+. .venv\Scripts\Activate.ps1
+pip install -U pip
+pip install -r requirements.txt
+```
+
+Run the shared notebook:
+```powershell
+jupyter notebook notebooks/01_shared_setup.ipynb
+```
+
+If you prefer `conda`, create a conda env and install the dependencies from `requirements.txt` or manually install the packages listed there.
+
 ## Shared pipeline usage
 
 Use the shared entrypoint so everyone loads data, builds preprocessing, and splits the same way:
@@ -34,6 +57,25 @@ artifacts = build_data_pipeline(
 X_train = artifacts.X_train
 y_train = artifacts.y_train
 ```
+
+## Strip notebook outputs on commit (recommended)
+
+Notebook files often contain execution outputs and absolute local paths (usernames, local directories) that make diffs noisy and can leak personal information. We recommend stripping outputs before committing notebooks.
+
+Quick setup (recommended):
+
+PowerShell:
+```powershell
+pip install nbstripout
+nbstripout --install
+```
+
+This installs a git filter that removes cell outputs automatically when you commit `.ipynb` files. Alternatively, to enforce in-repo attributes, add the `.gitattributes` file (already included) and run the above install command.
+
+If you use the `pre-commit` framework, you can add a hook that invokes `nbstripout` or use `nbstripout --install` as part of your onboarding steps.
+
+Why: stripping outputs keeps diffs small, avoids leaking local paths, and makes notebook reviews much cleaner.
+
 
 ## MLP baseline results
 Total records in dataset: 10,000
