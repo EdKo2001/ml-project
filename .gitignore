@@ -6,3 +6,8 @@ venv/
 .env
 results/*
 !results/.gitkeep
+svm/results/*
+!svm/results/.gitkeep
+svm/.matplotlib/
+svm/__pycache__/
+*.joblib
