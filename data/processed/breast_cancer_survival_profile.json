@@ -1,0 +1,142 @@
+{
+  "source_file": "data/raw/breast_cancer_dataset_2.csv",
+  "processed_file": "data/processed/breast_cancer_survival_processed.csv",
+  "raw_shape": [
+    4024,
+    16
+  ],
+  "processed_shape": [
+    4023,
+    16
+  ],
+  "normalized_columns": {
+    "Age": "age",
+    "Race": "race",
+    "Marital Status": "marital_status",
+    "T Stage ": "t_stage",
+    "N Stage": "n_stage",
+    "6th Stage": "sixth_stage",
+    "differentiate": "differentiation",
+    "Grade": "grade",
+    "A Stage": "a_stage",
+    "Tumor Size": "tumor_size",
+    "Estrogen Status": "estrogen_status",
+    "Progesterone Status": "progesterone_status",
+    "Regional Node Examined": "regional_node_examined",
+    "Reginol Node Positive": "regional_node_positive",
+    "Survival Months": "survival_months",
+    "Status": "status"
+  },
+  "target_column": "status",
+  "target_counts": {
+    "Alive": 3407,
+    "Dead": 616
+  },
+  "positive_class": "Dead",
+  "status_event_mapping": {
+    "Alive": 0,
+    "Dead": 1
+  },
+  "outcome_columns": [
+    "survival_months",
+    "status"
+  ],
+  "classification_feature_columns": [
+    "age",
+    "race",
+    "marital_status",
+    "t_stage",
+    "n_stage",
+    "sixth_stage",
+    "differentiation",
+    "grade",
+    "a_stage",
+    "tumor_size",
+    "estrogen_status",
+    "progesterone_status",
+    "regional_node_examined",
+    "regional_node_positive"
+  ],
+  "numeric_columns": [
+    "age",
+    "grade",
+    "regional_node_examined",
+    "regional_node_positive",
+    "survival_months",
+    "tumor_size"
+  ],
+  "categorical_columns": [
+    "race",
+    "marital_status",
+    "t_stage",
+    "n_stage",
+    "sixth_stage",
+    "differentiation",
+    "a_stage",
+    "estrogen_status",
+    "progesterone_status"
+  ],
+  "categorical_levels": {
+    "race": [
+      "Black",
+      "Other",
+      "White"
+    ],
+    "marital_status": [
+      "Divorced",
+      "Married",
+      "Separated",
+      "Single",
+      "Widowed"
+    ],
+    "t_stage": [
+      "T1",
+      "T2",
+      "T3",
+      "T4"
+    ],
+    "n_stage": [
+      "N1",
+      "N2",
+      "N3"
+    ],
+    "sixth_stage": [
+      "IIA",
+      "IIB",
+      "IIIA",
+      "IIIB",
+      "IIIC"
+    ],
+    "differentiation": [
+      "Moderately differentiated",
+      "Poorly differentiated",
+      "Undifferentiated",
+      "Well differentiated"
+    ],
+    "a_stage": [
+      "Distant",
+      "Regional"
+    ],
+    "estrogen_status": [
+      "Negative",
+      "Positive"
+    ],
+    "progesterone_status": [
+      "Negative",
+      "Positive"
+    ],
+    "status": [
+      "Alive",
+      "Dead"
+    ]
+  },
+  "grade_mapping": {
+    "1": "1",
+    "2": "2",
+    "3": "3",
+    "anaplastic; Grade IV": "4"
+  },
+  "missing_values": {},
+  "duplicate_rows_removed": 1,
+  "modeling_note": "For status classification, do not use survival_months as a feature; it is an outcome/time-to-event field."
+}
