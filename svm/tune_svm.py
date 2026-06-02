@@ -1,4 +1,4 @@
-"""Tune SVM hyperparameters for the predictive maintenance model."""
+"""Tune SVM hyperparameters for the breast cancer classification model."""
 
 from __future__ import annotations
 
@@ -26,6 +26,7 @@ from train_svm import (
     DEFAULT_RESULTS_DIR,
     build_features,
     build_preprocessor,
+    detect_positive_class,
     detect_target_column,
 )
 
@@ -49,6 +50,15 @@ def tune_svm(
     df = pd.read_csv(data_path)
     target_column = detect_target_column(df)
     X, y, dropped_columns = build_features(df, target_column)
+    positive_class = detect_positive_class(y)
+
+    grid_scoring = scoring
+    if scoring == "roc_auc":
+        def grid_scoring(estimator, X_validation, y_validation):
+            class_labels = estimator.named_steps["model"].classes_.tolist()
+            positive_class_index = class_labels.index(positive_class)
+            y_score = estimator.predict_proba(X_validation)[:, positive_class_index]
+            return roc_auc_score(y_validation == positive_class, y_score)
 
     X_train, X_test, y_train, y_test = train_test_split(
         X,
@@ -80,7 +90,7 @@ def tune_svm(
     search = GridSearchCV(
         estimator=pipeline,
         param_grid=DEFAULT_PARAM_GRID,
-        scoring=scoring,
+        scoring=grid_scoring,
         cv=cv,
         n_jobs=1,
         refit=True,
@@ -90,8 +100,10 @@ def tune_svm(
 
     best_model = search.best_estimator_
     y_pred = best_model.predict(X_test)
-    y_proba = best_model.predict_proba(X_test)[:, 1]
-    matrix = confusion_matrix(y_test, y_pred)
+    class_labels = best_model.named_steps["model"].classes_.tolist()
+    positive_class_index = class_labels.index(positive_class)
+    y_proba = best_model.predict_proba(X_test)[:, positive_class_index]
+    matrix = confusion_matrix(y_test, y_pred, labels=class_labels)
 
     run_id = datetime.now().strftime("svm_tuning_%Y%m%d_%H%M%S")
     run_dir = results_dir / run_id
@@ -113,14 +125,18 @@ def tune_svm(
         "data_path": str(data_path),
         "data_shape": list(df.shape),
         "target_column": target_column,
+        "class_labels": [str(label) for label in class_labels],
+        "positive_class": str(positive_class),
         "dropped_columns": dropped_columns,
         "feature_columns": X.columns.tolist(),
         "train_shape": list(X_train.shape),
         "test_shape": list(X_test.shape),
         "accuracy": float(accuracy_score(y_test, y_pred)),
-        "precision": float(precision_score(y_test, y_pred, zero_division=0)),
-        "recall": float(recall_score(y_test, y_pred, zero_division=0)),
-        "roc_auc": float(roc_auc_score(y_test, y_proba)),
+        "precision": float(
+            precision_score(y_test, y_pred, pos_label=positive_class, zero_division=0)
+        ),
+        "recall": float(recall_score(y_test, y_pred, pos_label=positive_class, zero_division=0)),
+        "roc_auc": float(roc_auc_score(y_test == positive_class, y_proba)),
         "confusion_matrix": matrix.tolist(),
         "classification_report": classification_report(
             y_test,
@@ -137,7 +153,7 @@ def tune_svm(
         {
             "actual": y_test.reset_index(drop=True),
             "predicted": pd.Series(y_pred),
-            "failure_probability": pd.Series(y_proba),
+            "positive_class_probability": pd.Series(y_proba),
         }
     ).to_csv(run_dir / "predictions.csv", index=False)
 

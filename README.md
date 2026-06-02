@@ -58,6 +58,46 @@ X_train = artifacts.X_train
 y_train = artifacts.y_train
 ```
 
+## Breast cancer dataset prep
+
+Prepare the diagnostic breast cancer dataset before model work:
+
+```powershell
+python src/prepare_breast_cancer_dataset.py
+```
+
+This writes:
+- `data/processed/breast_cancer_processed.csv`
+- `data/processed/breast_cancer_profile.json`
+
+The prep keeps `data/raw/breast_cancer_dataset.csv` unchanged, removes the non-predictive `id` column, removes the empty trailing header column, normalizes feature names to `snake_case`, and records the target balance. The target column remains `diagnosis`, with `M` as malignant and `B` as benign.
+
+Prepare the third breast cancer diagnostic dataset:
+
+```powershell
+python src/prepare_breast_cancer_dataset.py --raw-path data/raw/breast-cancer_3.csv --processed-path data/processed/breast_cancer_3_processed.csv --profile-path data/processed/breast_cancer_3_profile.json
+```
+
+This writes:
+- `data/processed/breast_cancer_3_processed.csv`
+- `data/processed/breast_cancer_3_profile.json`
+
+This dataset is the cleanest raw source for the diagnostic task. After preprocessing, it is identical to `data/processed/breast_cancer_processed.csv`.
+
+Prepare the breast cancer survival/status dataset separately:
+
+```powershell
+python src/prepare_breast_cancer_survival_dataset.py
+```
+
+This writes:
+- `data/processed/breast_cancer_survival_processed.csv`
+- `data/processed/breast_cancer_survival_profile.json`
+
+The prep keeps `data/raw/breast_cancer_dataset_2.csv` unchanged, normalizes headers to `snake_case`, corrects the `Reginol Node Positive` header typo to `regional_node_positive`, trims categorical values, converts `anaplastic; Grade IV` to grade `4`, removes exact duplicate rows, and records the `status` balance. For plain `status` classification, treat `survival_months` as an outcome field rather than a feature.
+
+See `data/processed/breast_cancer_dataset_comparison.md` for the three-dataset comparison and final recommendation.
+
 ## Strip notebook outputs on commit (recommended)
 
 Notebook files often contain execution outputs and absolute local paths (usernames, local directories) that make diffs noisy and can leak personal information. We recommend stripping outputs before committing notebooks.

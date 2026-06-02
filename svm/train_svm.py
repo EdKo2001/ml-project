@@ -1,4 +1,4 @@
-"""Train an isolated SVM model for predictive maintenance.
+"""Train an isolated SVM model for breast cancer classification.
 
 This file intentionally lives under ``svm/`` and writes to ``svm/results/`` so
 the SVM work stays separate from the shared project code and results.
@@ -33,15 +33,25 @@ from sklearn.svm import SVC
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_DATA_PATH = PROJECT_ROOT / "data" / "raw" / "predictive_maintenance.csv"
+DEFAULT_DATA_PATH = PROJECT_ROOT / "data" / "raw" / "breast_cancer_dataset.csv"
 DEFAULT_RESULTS_DIR = Path(__file__).resolve().parent / "results"
 DEFAULT_MPL_CONFIG_DIR = Path(__file__).resolve().parent / ".matplotlib"
 os.environ.setdefault("MPLCONFIGDIR", str(DEFAULT_MPL_CONFIG_DIR))
+os.environ.setdefault("MPLBACKEND", "Agg")
 
 import matplotlib.pyplot as plt
 
-TARGET_CANDIDATES = ("Target", "Machine failure", "machine_failure", "failure", "label")
-DROP_COLUMNS = ("UDI", "Product ID", "Failure Type")
+TARGET_CANDIDATES = (
+    "diagnosis",
+    "target",
+    "Target",
+    "Machine failure",
+    "machine_failure",
+    "failure",
+    "label",
+)
+DROP_COLUMNS = ("id", "ID", "UDI", "Product ID", "Failure Type", "Unnamed: 32")
+POSITIVE_CLASS_CANDIDATES = ("M", "malignant", 1, "1", True)
 
 
 def detect_target_column(df: pd.DataFrame) -> str:
@@ -62,6 +72,21 @@ def build_features(df: pd.DataFrame, target_column: str) -> tuple[pd.DataFrame, 
     X = df.drop(columns=[target_column] + dropped_columns)
     y = df[target_column]
     return X, y, dropped_columns
+
+
+def detect_positive_class(y: pd.Series):
+    """Prefer malignant/failure as the positive class for binary metrics."""
+    labels = y.dropna().unique().tolist()
+    normalized_labels = {str(label).strip().lower(): label for label in labels}
+    for candidate in POSITIVE_CLASS_CANDIDATES:
+        if candidate in labels:
+            return candidate
+        match = normalized_labels.get(str(candidate).strip().lower())
+        if match is not None:
+            return match
+    if len(labels) != 2:
+        raise ValueError(f"Expected a binary target. Labels: {labels}")
+    return sorted(labels, key=str)[-1]
 
 
 def build_preprocessor(X: pd.DataFrame) -> ColumnTransformer:
@@ -99,6 +124,7 @@ def train_svm(
     df = pd.read_csv(data_path)
     target_column = detect_target_column(df)
     X, y, dropped_columns = build_features(df, target_column)
+    positive_class = detect_positive_class(y)
 
     X_train, X_test, y_train, y_test = train_test_split(
         X,
@@ -127,8 +153,10 @@ def train_svm(
     pipeline.fit(X_train, y_train)
 
     y_pred = pipeline.predict(X_test)
-    y_proba = pipeline.predict_proba(X_test)[:, 1]
-    matrix = confusion_matrix(y_test, y_pred)
+    class_labels = pipeline.named_steps["model"].classes_.tolist()
+    positive_class_index = class_labels.index(positive_class)
+    y_proba = pipeline.predict_proba(X_test)[:, positive_class_index]
+    matrix = confusion_matrix(y_test, y_pred, labels=class_labels)
 
     run_id = datetime.now().strftime("svm_%Y%m%d_%H%M%S")
     run_dir = results_dir / run_id
@@ -141,14 +169,18 @@ def train_svm(
         "data_path": str(data_path),
         "data_shape": list(df.shape),
         "target_column": target_column,
+        "class_labels": [str(label) for label in class_labels],
+        "positive_class": str(positive_class),
         "dropped_columns": dropped_columns,
         "feature_columns": X.columns.tolist(),
         "train_shape": list(X_train.shape),
         "test_shape": list(X_test.shape),
         "accuracy": float(accuracy_score(y_test, y_pred)),
-        "precision": float(precision_score(y_test, y_pred, zero_division=0)),
-        "recall": float(recall_score(y_test, y_pred, zero_division=0)),
-        "roc_auc": float(roc_auc_score(y_test, y_proba)),
+        "precision": float(
+            precision_score(y_test, y_pred, pos_label=positive_class, zero_division=0)
+        ),
+        "recall": float(recall_score(y_test, y_pred, pos_label=positive_class, zero_division=0)),
+        "roc_auc": float(roc_auc_score(y_test == positive_class, y_proba)),
         "confusion_matrix": matrix.tolist(),
         "classification_report": classification_report(
             y_test,
@@ -165,17 +197,19 @@ def train_svm(
         {
             "actual": y_test.reset_index(drop=True),
             "predicted": pd.Series(y_pred),
-            "failure_probability": pd.Series(y_proba),
+            "positive_class_probability": pd.Series(y_proba),
         }
     ).to_csv(run_dir / "predictions.csv", index=False)
 
-    ConfusionMatrixDisplay(confusion_matrix=matrix).plot(values_format="d")
+    ConfusionMatrixDisplay(confusion_matrix=matrix, display_labels=class_labels).plot(
+        values_format="d"
+    )
     plt.title("SVM Confusion Matrix")
     plt.tight_layout()
     plt.savefig(run_dir / "confusion_matrix.png", dpi=150)
     plt.close()
 
-    RocCurveDisplay.from_predictions(y_test, y_proba)
+    RocCurveDisplay.from_predictions(y_test, y_proba, pos_label=positive_class)
     plt.title("SVM ROC Curve")
     plt.tight_layout()
     plt.savefig(run_dir / "roc_curve.png", dpi=150)
