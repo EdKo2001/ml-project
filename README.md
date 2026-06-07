@@ -134,3 +134,19 @@ Interpretation:
 	- 1 = actual 0, predicted 1 (false positive)
 	- 4 = actual 1, predicted 0 (false negative)
 	- 64 = actual 1, predicted 1 (true positive)
+
+	## Evaluation & Imbalance guidance
+
+	- **Use F1, not just accuracy:** Report `precision`, `recall`, and `f1` (use `sklearn.metrics.f1_score`) in addition to accuracy and AUC to properly evaluate models on imbalanced data.
+	- **Handle class imbalance:** recommended approaches:
+		- Resampling: `SMOTE`, `RandomOverSampler`, `RandomUnderSampler` from `imbalanced-learn`.
+		- Class weights / sample weights: use `class_weight='balanced'` or `sample_weight` when supported by the estimator.
+		- Evaluate using stratified CV and report per-class metrics.
+	- **SHAP:** `shap` is included in `requirements.txt` — use `shap.Explainer` to produce feature importance and per-sample explanations and save figures to `results/metrics`.
+
+	## Future work (suggestions)
+
+	- Explore deep learning feature extraction for richer representations (autoencoders, pretrained sequence models, or 1D-CNNs for time-series sensor data).
+	- Investigate hierarchical or temporal models if you have timestamped sensor streams (LSTM/Transformer-based feature encoders).
+	- Add a reproducible evaluation harness: a small `src/eval.py` that standardizes metrics output (JSON) and `src/imbalance.py` helpers for resampling/class weights.
+	- Production notes: prepare a minimal model-serving demo (FastAPI + Docker) and include calibration checks for probabilistic outputs.
