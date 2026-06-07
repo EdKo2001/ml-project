@@ -7,3 +7,4 @@ seaborn
 imbalanced-learn
 shap
 jupyter
+python-pptx
