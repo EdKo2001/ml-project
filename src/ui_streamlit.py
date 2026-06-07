@@ -85,7 +85,10 @@ def shap_local_to_top(shap_obj: Any, feature_names: list[str], top_n: int = 5):
                 contrib = np.ravel(vals)
         else:
             arr = np.asarray(shap_obj)
-            if arr.ndim == 2:
+            if arr.ndim == 3:
+                class_idx = 1 if arr.shape[2] > 1 else 0
+                contrib = arr[0, :, class_idx]
+            elif arr.ndim == 2:
                 contrib = arr[0, :]
             else:
                 contrib = np.ravel(arr)
@@ -95,6 +98,60 @@ def shap_local_to_top(shap_obj: Any, feature_names: list[str], top_n: int = 5):
     mags = np.abs(contrib)
     idx = np.argsort(mags)[-top_n:][::-1]
     return [(feature_names[i], float(contrib[i])) for i in idx]
+
+
+def compute_live_shap_local(
+    model: Any, patient_df: pd.DataFrame, background_df: pd.DataFrame
+):
+    """Compute a local SHAP explanation directly from the current model.
+
+    This is a fallback when a saved SHAP artifact is missing, stale, or was
+    generated for a different dataset/model.
+    """
+    try:
+        import shap
+    except Exception:
+        return None, []
+
+    if not hasattr(model, "named_steps"):
+        return None, []
+
+    pre = model.named_steps.get("preprocessor")
+    core = model.named_steps.get("model")
+    if pre is None or core is None:
+        return None, []
+
+    try:
+        feat_names = list(pre.get_feature_names_out(background_df.columns.tolist()))
+    except Exception:
+        feat_names = background_df.columns.tolist()
+
+    bg = background_df.sample(n=min(100, len(background_df)), random_state=42)
+    try:
+        bg_trans = pre.transform(bg)
+        ex_trans = pre.transform(patient_df)
+    except Exception:
+        return None, feat_names
+
+    try:
+        explainer = shap.Explainer(core, bg_trans)
+        return explainer(ex_trans), feat_names
+    except Exception:
+        try:
+            explainer = shap.TreeExplainer(core, data=bg_trans, check_additivity=False)
+            return explainer(ex_trans), feat_names
+        except Exception:
+            try:
+                predict_fn = (
+                    lambda z: core.predict_proba(z)[:, 1]
+                    if hasattr(core, "predict_proba")
+                    else core.predict(z)
+                )
+                explainer = shap.KernelExplainer(predict_fn, bg_trans)
+                shap_vals = explainer.shap_values(ex_trans, nsamples=100)
+                return shap_vals, feat_names
+            except Exception:
+                return None, feat_names
 
 
 st.title("Breast Cancer: Patient-level prediction & explanation helper")
@@ -300,14 +357,16 @@ if patient_df is not None:
             risk_label = "low" if proba >= 0.5 else "intermediate-to-higher"
             st.write(f"Risk group (threshold 0.5): **{risk_label}**")
 
-            # Attempt to find SHAP local joblib in latest shap run
+            # Attempt to find SHAP local joblib in the latest shap run.
+            # If that does not work, compute SHAP live from the currently selected model.
             shap_runs = sorted(
                 [p for p in RESULTS_DIR.glob("shap_compare_*") if p.is_dir()]
             )
             shap_local = None
             if shap_runs:
                 latest = shap_runs[-1]
-                shap_local = load_shap_local(latest, "random_forest")
+                shap_model_name = "logistic_regression" if "logistic" in str(model_path).lower() else "random_forest"
+                shap_local = load_shap_local(latest, shap_model_name)
 
             top_drivers = []
             if shap_local is not None:
@@ -331,13 +390,21 @@ if patient_df is not None:
                 except Exception:
                     top_drivers = []
 
+                if not top_drivers:
+                    live_shap, feat_names = compute_live_shap_local(model, patient_df, df)
+                    if live_shap is not None:
+                        try:
+                            top_drivers = shap_local_to_top(live_shap, feat_names, top_n=5)
+                        except Exception:
+                            top_drivers = []
+
             if top_drivers:
                 st.subheader("Top contributing features (local SHAP)")
                 for fn, val in top_drivers:
                     st.write(f"- **{fn}**: {val:+.3f}")
             else:
                 st.info(
-                    "No local SHAP artifact found for RandomForest in latest SHAP run; you can run SHAP scripts to generate them."
+                        "SHAP could not be read from the saved run, so the app could not show local drivers for this model."
                 )
 
             # Generate patient-friendly explanation and LLM prompt
