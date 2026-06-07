@@ -256,10 +256,6 @@ if sel_model_name:
         candidate = Path(sel_model_name)
     model_path = candidate
 
-# Allow refreshing the available model list (useful after saving a new model)
-if st.sidebar.button("Refresh model list"):
-    st.experimental_rerun()
-
 if model_path is None:
     st.sidebar.info(
         "No model selected. Upload a joblib Pipeline or place a model in results/metrics"
