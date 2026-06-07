@@ -12,3 +12,4 @@ svm/.matplotlib/
 svm/__pycache__/
 *.joblib
 !results/feature_sets/.gitkeep
+.idea
