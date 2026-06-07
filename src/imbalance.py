@@ -2,6 +2,7 @@
 
 Minimal helpers: compute class weights and perform simple resampling.
 """
+
 from __future__ import annotations
 
 from typing import Iterable, Tuple, Optional
@@ -12,12 +13,14 @@ def compute_class_weights(y: Iterable):
     """Return a dict mapping class_label -> weight usable in `class_weight`."""
     from sklearn.utils.class_weight import compute_class_weight
 
-    classes = sorted(set(y))
+    classes = np.unique(list(y))
     weights = compute_class_weight(class_weight="balanced", classes=classes, y=list(y))
-    return dict(zip(classes, map(float, weights)))
+    return dict(zip(classes.tolist(), map(float, weights)))
 
 
-def resample_dataset(X, y, method: str = "smote", random_state: Optional[int] = 42) -> Tuple:
+def resample_dataset(
+    X, y, method: str = "smote", random_state: Optional[int] = 42
+) -> Tuple:
     """Resample the dataset and return (X_res, y_res).
 
     Supported methods: 'smote', 'oversample', 'undersample'.
@@ -36,7 +39,9 @@ def resample_dataset(X, y, method: str = "smote", random_state: Optional[int] = 
 
         sampler = RandomUnderSampler(random_state=random_state)
     else:
-        raise ValueError("Unsupported resampling method: choose 'smote', 'oversample', or 'undersample'.")
+        raise ValueError(
+            "Unsupported resampling method: choose 'smote', 'oversample', or 'undersample'."
+        )
 
     X_res, y_res = sampler.fit_resample(X, y)
     return X_res, y_res
