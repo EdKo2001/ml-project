@@ -17,6 +17,7 @@ import streamlit as st
 
 ROOT = Path(__file__).resolve().parents[1]
 PROCESSED_SURVIVAL = ROOT / "data" / "processed" / "breast_cancer_survival_processed.csv"
+PROCESSED_DIAGNOSTIC = ROOT / "data" / "processed" / "breast_cancer_processed.csv"
 DEFAULT_MODEL = ROOT / "results" / "metrics" / "breast_cancer_model.joblib"
 RESULTS_DIR = ROOT / "results"
 
@@ -68,12 +69,20 @@ def shap_local_to_top(shap_obj: Any, feature_names: list[str], top_n: int = 5):
 
 st.title("Breast Cancer: Patient-level prediction & explanation helper")
 
-if not PROCESSED_SURVIVAL.exists():
-    st.warning(f"Processed survival CSV not found at {PROCESSED_SURVIVAL}. Run dataset prep first.")
+# Dataset selection: survival vs diagnostic processed CSV
+dataset_choice = st.sidebar.selectbox(
+    "Processed dataset",
+    ("Survival", "Diagnostic"),
+    index=0,
+)
+
+selected_path = PROCESSED_SURVIVAL if dataset_choice == "Survival" else PROCESSED_DIAGNOSTIC
+if not selected_path.exists():
+    st.warning(f"Selected processed CSV not found: {selected_path}. Run dataset prep first.")
 
 df = None
-if PROCESSED_SURVIVAL.exists():
-    df = pd.read_csv(PROCESSED_SURVIVAL)
+if selected_path.exists():
+    df = pd.read_csv(selected_path)
 
 st.sidebar.header("Model selection")
 model_path = None
@@ -114,14 +123,49 @@ if patient_df is not None:
     if model is None:
         st.warning("No model available to predict. Provide a model to enable predictions.")
     else:
+        # Verify that the model and patient row have matching features
+        expected_feats = None
+        pre = None
         try:
-            proba = model.predict_proba(patient_df)[0, 1]
+            if hasattr(model, "named_steps"):
+                pre = model.named_steps.get("preprocessor")
+            if pre is not None:
+                try:
+                    expected_feats = list(pre.get_feature_names_out(patient_df.columns.tolist()))
+                except Exception:
+                    try:
+                        expected_feats = list(pre.get_feature_names_out())
+                    except Exception:
+                        expected_feats = None
+            elif hasattr(model, "feature_names_in_"):
+                expected_feats = list(model.feature_names_in_)
         except Exception:
+            expected_feats = None
+
+        missing = None
+        if expected_feats is not None:
+            missing = set(expected_feats) - set(patient_df.columns.tolist())
+        if missing:
+            st.error("Model evaluation failed: columns are missing: {}".format(sorted(list(missing))))
+            st.info("Possible fixes: select the matching processed dataset in the sidebar, upload a one-row CSV matching the model inputs, or run dataset preparation.")
+            if st.button("Prepare processed datasets now"):
+                try:
+                    from src.finalize_dataset import main as finalize_main
+
+                    finalize_main()
+                    st.success("Dataset preparation completed. Reload the app or re-select the dataset.")
+                except Exception as e:
+                    st.error(f"Failed to prepare datasets: {e}")
+            proba = None
+        else:
             try:
-                proba = float(model.predict(patient_df)[0])
-            except Exception as e:
-                st.error(f"Model evaluation failed: {e}")
-                proba = None
+                proba = model.predict_proba(patient_df)[0, 1]
+            except Exception:
+                try:
+                    proba = float(model.predict(patient_df)[0])
+                except Exception as e:
+                    st.error(f"Model evaluation failed: {e}")
+                    proba = None
 
         if proba is not None:
             pct = int(round(proba * 100))
