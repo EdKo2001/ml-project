@@ -182,24 +182,14 @@ if sel_model_name:
 if st.sidebar.button("Refresh model list"):
     st.experimental_rerun()
 
-uploaded = st.sidebar.file_uploader("Or upload a model (.joblib)")
-if uploaded is not None:
-    tmp = Path(".") / "uploaded_model.joblib"
-    with tmp.open("wb") as fh:
-        fh.write(uploaded.getbuffer())
-    model_path = tmp
-
 if model_path is None:
     st.sidebar.info(
         "No model selected. Upload a joblib Pipeline or place a model in results/metrics"
     )
 
-# Provide a manual reload button so users can overwrite the model file without restarting Streamlit
-reload_model = st.sidebar.button("Reload model file")
-
 model = None
 if model_path is not None:
-    model = get_model_with_cache(model_path, force_reload=reload_model)
+    model = get_model_with_cache(model_path)
 
 st.header("Select patient input")
 if df is None:
