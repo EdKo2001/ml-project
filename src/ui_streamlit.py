@@ -203,13 +203,10 @@ if model_path is not None:
 
 st.header("Select patient input")
 if df is None:
-    st.info(
-        "No processed data available to select a sample. You can upload a single-row CSV with matching columns."
+    st.warning(
+        "No processed data available to select a sample. Run dataset preparation first and refresh the app."
     )
-    uploaded_row = st.file_uploader("Upload patient CSV (single row)", type=["csv"])
     patient_df = None
-    if uploaded_row is not None:
-        patient_df = pd.read_csv(uploaded_row)
 else:
     idx = st.number_input(
         "Patient row index", min_value=0, max_value=max(0, len(df) - 1), value=0
