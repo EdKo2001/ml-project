@@ -1,0 +1,26 @@
+{
+  "chat.tools.terminal.autoApprove": {
+    "/^python src/breast_cancer_pipeline\\.py$/": {
+      "approve": true,
+      "matchCommandLine": true
+    },
+    "/^\\$env:PYTHONPATH = '\\.'; python src/breast_cancer_pipeline\\.py$/": {
+      "approve": true,
+      "matchCommandLine": true
+    },
+    "/^\\$env:PYTHONPATH='\\.'; python -c \"from src\\.breast_cancer_pipeline import run; import json; print\\(json\\.dumps\\(run\\(resample_method=None\\), indent=2\\)\\)\"$/": {
+      "approve": true,
+      "matchCommandLine": true
+    },
+    "/^python -c \"import os; os\\.environ\\['PYTHONPATH'\\]='\\.'; from src\\.breast_cancer_pipeline import run; import json; print\\(json\\.dumps\\(run\\(resample_method=None\\), indent=2\\)\\)\"$/": {
+      "approve": true,
+      "matchCommandLine": true
+    },
+    "/^powershell -c \"ls -File results\\\\metrics \\| Select-Object Name,Length\"$/": {
+      "approve": true,
+      "matchCommandLine": true
+    },
+    "git --no-pager log": true,
+    "git reflog": true
+  }
+}

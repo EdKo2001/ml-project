@@ -32,6 +32,34 @@ def load_model(path: Path):
         return None
 
 
+def get_model_with_cache(path: Path, force_reload: bool = False):
+    """Load a model and cache it in session_state keyed by path and mtime.
+
+    This avoids restarting Streamlit when the model file is overwritten. Call
+    with `force_reload=True` to force reloading.
+    """
+    if path is None or not path.exists():
+        return None
+
+    mtime = path.stat().st_mtime
+    key_path = str(path)
+    cache_key = f"model_mtime_{key_path}"
+    obj_key = f"model_obj_{key_path}"
+
+    if force_reload:
+        st.session_state.pop(cache_key, None)
+        st.session_state.pop(obj_key, None)
+
+    if st.session_state.get(cache_key) == mtime and obj_key in st.session_state:
+        return st.session_state[obj_key]
+
+    model = load_model(path)
+    if model is not None:
+        st.session_state[cache_key] = mtime
+        st.session_state[obj_key] = model
+    return model
+
+
 def load_shap_local(run_dir: Path, model_name: str):
     p = run_dir / f"{model_name}_shap_example_local.joblib"
     if not p.exists():
@@ -76,6 +104,7 @@ dataset_choice = st.sidebar.selectbox(
     "Processed dataset",
     ("Survival", "Diagnostic"),
     index=0,
+    key="dataset_choice",
 )
 
 selected_path = (
@@ -91,14 +120,70 @@ if selected_path.exists():
     df = pd.read_csv(selected_path)
 
 st.sidebar.header("Model selection")
+# Discover available model files in results/metrics
 model_path = None
-if DEFAULT_MODEL.exists():
-    st.sidebar.write(f"Found default model: {DEFAULT_MODEL.name}")
-    if st.sidebar.checkbox("Use default model", value=True):
-        model_path = DEFAULT_MODEL
+metrics_dir = ROOT / "results" / "metrics"
+available_models = []
+if metrics_dir.exists():
+    available_models = sorted([p for p in metrics_dir.glob("*.joblib") if p.is_file()])
+
+model_choices = [p.name for p in available_models]
+if DEFAULT_MODEL.exists() and DEFAULT_MODEL.name not in model_choices:
+    model_choices.insert(0, DEFAULT_MODEL.name)
+
+
+# Auto-select a model that matches the chosen dataset when possible
+def _auto_select_model_for_dataset(dataset: str, choices: list[str]) -> str | None:
+    if not choices:
+        return None
+    lower = [c.lower() for c in choices]
+    if dataset == "Survival":
+        surv = [c for c in choices if "survival" in c.lower()]
+        if surv:
+            return surv[-1]
+        # fallback: any model with 'surv' substring
+        surv2 = [c for c in choices if "surv" in c.lower()]
+        if surv2:
+            return surv2[-1]
+        return None
+    # Diagnostic dataset
+    # Prefer the default diagnostic model name, else any non-survival model
+    if DEFAULT_MODEL.name in choices:
+        return DEFAULT_MODEL.name
+    non_surv = [c for c in choices if "survival" not in c.lower()]
+    if non_surv:
+        return non_surv[0]
+    return None
+
+
+auto_model = _auto_select_model_for_dataset(dataset_choice, model_choices)
+sel_model_name = None
+if model_choices:
+    # selectbox options include an empty option for manual 'none'
+    opts = ("",) + tuple(model_choices)
+    # determine default index: 0 means empty selection
+    default_index = 0
+    if auto_model and auto_model in model_choices:
+        default_index = model_choices.index(auto_model) + 1
+    sel_model_name = st.sidebar.selectbox(
+        "Choose a model file", opts, index=default_index
+    )
+    if sel_model_name == "" and auto_model is not None:
+        # if user hasn't manually chosen, show that we auto-selected and allow them to pick
+        st.sidebar.write(f"Auto-suggested model for {dataset_choice}: {auto_model}")
+
+if sel_model_name:
+    candidate = metrics_dir / sel_model_name
+    if not candidate.exists() and Path(sel_model_name).exists():
+        candidate = Path(sel_model_name)
+    model_path = candidate
+
+# Allow refreshing the available model list (useful after saving a new model)
+if st.sidebar.button("Refresh model list"):
+    st.experimental_rerun()
 
 uploaded = st.sidebar.file_uploader("Or upload a model (.joblib)")
-if uploaded is not None and model_path is None:
+if uploaded is not None:
     tmp = Path(".") / "uploaded_model.joblib"
     with tmp.open("wb") as fh:
         fh.write(uploaded.getbuffer())
@@ -106,12 +191,15 @@ if uploaded is not None and model_path is None:
 
 if model_path is None:
     st.sidebar.info(
-        "No model selected. Upload a joblib Pipeline or place a model at results/metrics/breast_cancer_model.joblib"
+        "No model selected. Upload a joblib Pipeline or place a model in results/metrics"
     )
+
+# Provide a manual reload button so users can overwrite the model file without restarting Streamlit
+reload_model = st.sidebar.button("Reload model file")
 
 model = None
 if model_path is not None:
-    model = load_model(model_path)
+    model = get_model_with_cache(model_path, force_reload=reload_model)
 
 st.header("Select patient input")
 if df is None:
@@ -158,48 +246,57 @@ if patient_df is not None:
         except Exception:
             expected_feats = None
 
-            missing = None
-            missing_raw = None
-            if expected_feats is not None:
-                # expected_feats may be transformed (e.g., 'num__texture_mean' or 'cat__marital_status_Married').
-                # Try to map transformed names back to raw column names by substring matching.
-                raw_cols = set(patient_df.columns.tolist())
-                unmatched = []
-                for feat in expected_feats:
-                    mapped = False
-                    # try direct containment: raw column appears inside transformed name
+        # Map transformed feature names back to raw column names by substring matching
+        missing_raw = None
+        if expected_feats is not None:
+            raw_cols = set(patient_df.columns.tolist())
+            unmatched = []
+            for feat in expected_feats:
+                mapped = False
+                for rc in raw_cols:
+                    if rc in feat:
+                        mapped = True
+                        break
+                if not mapped:
+                    base = feat.split("__", 1)[-1] if "__" in feat else feat
                     for rc in raw_cols:
-                        if rc in feat:
+                        if rc in base or base in rc:
                             mapped = True
                             break
-                    if not mapped:
-                        # also try removing a prefix like 'num__' or 'cat__'
-                        base = feat.split("__", 1)[-1] if "__" in feat else feat
-                        for rc in raw_cols:
-                            if rc in base or base in rc:
-                                mapped = True
-                                break
-                    if not mapped:
-                        unmatched.append(feat)
-                if unmatched:
-                    # present cleaned expected raw-like names for clarity
-                    missing_raw = sorted(list({u.split("__", 1)[-1] if "__" in u else u for u in unmatched}))
-            if missing_raw:
-                st.error(
-                    "Model evaluation failed: columns are missing: {}".format(missing_raw)
+                if not mapped:
+                    unmatched.append(feat)
+            if unmatched:
+                missing_raw = sorted(
+                    list({u.split("__", 1)[-1] if "__" in u else u for u in unmatched})
                 )
-                st.info(
-                    "Possible fixes: select the matching processed dataset in the sidebar, upload a one-row CSV matching the model inputs, or run dataset preparation."
-                )
-                if st.button("Prepare processed datasets now"):
-                    try:
-                        from src.finalize_dataset import main as finalize_main
 
-                        finalize_main()
-                        st.success("Dataset preparation completed. Reload the app or re-select the dataset.")
-                    except Exception as e:
-                        st.error(f"Failed to prepare datasets: {e}")
-                proba = None
+        if missing_raw:
+            st.error(
+                "Model evaluation failed: columns are missing: {}".format(missing_raw)
+            )
+            st.info(
+                "Possible fixes: select the matching processed dataset in the sidebar, upload a one-row CSV matching the model inputs, or run dataset preparation."
+            )
+            if st.button("Switch to Diagnostic dataset"):
+                try:
+                    st.session_state["dataset_choice"] = "Diagnostic"
+                    st.experimental_rerun()
+                except Exception:
+                    st.warning(
+                        "Could not switch automatically; please select 'Diagnostic' from the sidebar."
+                    )
+
+            if st.button("Prepare processed datasets now"):
+                try:
+                    from src.finalize_dataset import main as finalize_main
+
+                    finalize_main()
+                    st.success(
+                        "Dataset preparation completed. Reload the app or re-select the dataset."
+                    )
+                except Exception as e:
+                    st.error(f"Failed to prepare datasets: {e}")
+            proba = None
         else:
             try:
                 proba = model.predict_proba(patient_df)[0, 1]

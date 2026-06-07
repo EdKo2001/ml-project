@@ -56,7 +56,6 @@ If you want the README shortened further or tailored to a specific audience (ins
 
 ## Actionable next steps (proposal & professor feedback)
 
- 
 - Standardize evaluation: use stratified cross-validation and report accuracy, precision, recall, F1, and ROC-AUC for all models; store JSON reports in `results/metrics` (see `src/eval.py`).
 - Baseline model: implement Logistic Regression baseline (proposal) and compare with Random Forest / MLP baselines; prefer F1 as primary metric.
 - Explainability: run SHAP on final models to produce global and local explanations; export SHAP plots and short interpretation notes to `results/metrics`.

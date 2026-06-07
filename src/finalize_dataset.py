@@ -3,6 +3,7 @@
 This script runs the dataset preparation helpers to produce cleaned
 CSV and profile JSON files under `data/processed/` when they are missing.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
