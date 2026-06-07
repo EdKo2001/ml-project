@@ -2,6 +2,7 @@
 
 Run with: `streamlit run src/ui_streamlit.py`
 """
+
 from __future__ import annotations
 
 import json
@@ -14,9 +15,10 @@ import pandas as pd
 
 import streamlit as st
 
-
 ROOT = Path(__file__).resolve().parents[1]
-PROCESSED_SURVIVAL = ROOT / "data" / "processed" / "breast_cancer_survival_processed.csv"
+PROCESSED_SURVIVAL = (
+    ROOT / "data" / "processed" / "breast_cancer_survival_processed.csv"
+)
 PROCESSED_DIAGNOSTIC = ROOT / "data" / "processed" / "breast_cancer_processed.csv"
 DEFAULT_MODEL = ROOT / "results" / "metrics" / "breast_cancer_model.joblib"
 RESULTS_DIR = ROOT / "results"
@@ -76,9 +78,13 @@ dataset_choice = st.sidebar.selectbox(
     index=0,
 )
 
-selected_path = PROCESSED_SURVIVAL if dataset_choice == "Survival" else PROCESSED_DIAGNOSTIC
+selected_path = (
+    PROCESSED_SURVIVAL if dataset_choice == "Survival" else PROCESSED_DIAGNOSTIC
+)
 if not selected_path.exists():
-    st.warning(f"Selected processed CSV not found: {selected_path}. Run dataset prep first.")
+    st.warning(
+        f"Selected processed CSV not found: {selected_path}. Run dataset prep first."
+    )
 
 df = None
 if selected_path.exists():
@@ -99,7 +105,9 @@ if uploaded is not None and model_path is None:
     model_path = tmp
 
 if model_path is None:
-    st.sidebar.info("No model selected. Upload a joblib Pipeline or place a model at results/metrics/breast_cancer_model.joblib")
+    st.sidebar.info(
+        "No model selected. Upload a joblib Pipeline or place a model at results/metrics/breast_cancer_model.joblib"
+    )
 
 model = None
 if model_path is not None:
@@ -107,13 +115,17 @@ if model_path is not None:
 
 st.header("Select patient input")
 if df is None:
-    st.info("No processed data available to select a sample. You can upload a single-row CSV with matching columns.")
+    st.info(
+        "No processed data available to select a sample. You can upload a single-row CSV with matching columns."
+    )
     uploaded_row = st.file_uploader("Upload patient CSV (single row)", type=["csv"])
     patient_df = None
     if uploaded_row is not None:
         patient_df = pd.read_csv(uploaded_row)
 else:
-    idx = st.number_input("Patient row index", min_value=0, max_value=max(0, len(df) - 1), value=0)
+    idx = st.number_input(
+        "Patient row index", min_value=0, max_value=max(0, len(df) - 1), value=0
+    )
     patient_df = df.iloc[[int(idx)]]
 
 if patient_df is not None:
@@ -121,7 +133,9 @@ if patient_df is not None:
     st.dataframe(patient_df)
 
     if model is None:
-        st.warning("No model available to predict. Provide a model to enable predictions.")
+        st.warning(
+            "No model available to predict. Provide a model to enable predictions."
+        )
     else:
         # Verify that the model and patient row have matching features
         expected_feats = None
@@ -131,7 +145,9 @@ if patient_df is not None:
                 pre = model.named_steps.get("preprocessor")
             if pre is not None:
                 try:
-                    expected_feats = list(pre.get_feature_names_out(patient_df.columns.tolist()))
+                    expected_feats = list(
+                        pre.get_feature_names_out(patient_df.columns.tolist())
+                    )
                 except Exception:
                     try:
                         expected_feats = list(pre.get_feature_names_out())
@@ -142,21 +158,48 @@ if patient_df is not None:
         except Exception:
             expected_feats = None
 
-        missing = None
-        if expected_feats is not None:
-            missing = set(expected_feats) - set(patient_df.columns.tolist())
-        if missing:
-            st.error("Model evaluation failed: columns are missing: {}".format(sorted(list(missing))))
-            st.info("Possible fixes: select the matching processed dataset in the sidebar, upload a one-row CSV matching the model inputs, or run dataset preparation.")
-            if st.button("Prepare processed datasets now"):
-                try:
-                    from src.finalize_dataset import main as finalize_main
+            missing = None
+            missing_raw = None
+            if expected_feats is not None:
+                # expected_feats may be transformed (e.g., 'num__texture_mean' or 'cat__marital_status_Married').
+                # Try to map transformed names back to raw column names by substring matching.
+                raw_cols = set(patient_df.columns.tolist())
+                unmatched = []
+                for feat in expected_feats:
+                    mapped = False
+                    # try direct containment: raw column appears inside transformed name
+                    for rc in raw_cols:
+                        if rc in feat:
+                            mapped = True
+                            break
+                    if not mapped:
+                        # also try removing a prefix like 'num__' or 'cat__'
+                        base = feat.split("__", 1)[-1] if "__" in feat else feat
+                        for rc in raw_cols:
+                            if rc in base or base in rc:
+                                mapped = True
+                                break
+                    if not mapped:
+                        unmatched.append(feat)
+                if unmatched:
+                    # present cleaned expected raw-like names for clarity
+                    missing_raw = sorted(list({u.split("__", 1)[-1] if "__" in u else u for u in unmatched}))
+            if missing_raw:
+                st.error(
+                    "Model evaluation failed: columns are missing: {}".format(missing_raw)
+                )
+                st.info(
+                    "Possible fixes: select the matching processed dataset in the sidebar, upload a one-row CSV matching the model inputs, or run dataset preparation."
+                )
+                if st.button("Prepare processed datasets now"):
+                    try:
+                        from src.finalize_dataset import main as finalize_main
 
-                    finalize_main()
-                    st.success("Dataset preparation completed. Reload the app or re-select the dataset.")
-                except Exception as e:
-                    st.error(f"Failed to prepare datasets: {e}")
-            proba = None
+                        finalize_main()
+                        st.success("Dataset preparation completed. Reload the app or re-select the dataset.")
+                    except Exception as e:
+                        st.error(f"Failed to prepare datasets: {e}")
+                proba = None
         else:
             try:
                 proba = model.predict_proba(patient_df)[0, 1]
@@ -174,7 +217,9 @@ if patient_df is not None:
             st.write(f"Risk group (threshold 0.5): **{risk_label}**")
 
             # Attempt to find SHAP local joblib in latest shap run
-            shap_runs = sorted([p for p in RESULTS_DIR.glob("shap_compare_*") if p.is_dir()])
+            shap_runs = sorted(
+                [p for p in RESULTS_DIR.glob("shap_compare_*") if p.is_dir()]
+            )
             shap_local = None
             if shap_runs:
                 latest = shap_runs[-1]
@@ -184,10 +229,16 @@ if patient_df is not None:
             if shap_local is not None:
                 try:
                     # try to reconstruct feature names from pipeline preprocessor
-                    pre = model.named_steps.get("preprocessor") if hasattr(model, "named_steps") else None
+                    pre = (
+                        model.named_steps.get("preprocessor")
+                        if hasattr(model, "named_steps")
+                        else None
+                    )
                     if pre is not None:
                         try:
-                            feat_names = pre.get_feature_names_out(patient_df.columns.tolist())
+                            feat_names = pre.get_feature_names_out(
+                                patient_df.columns.tolist()
+                            )
                         except Exception:
                             feat_names = patient_df.columns.tolist()
                     else:
@@ -201,7 +252,9 @@ if patient_df is not None:
                 for fn, val in top_drivers:
                     st.write(f"- **{fn}**: {val:+.3f}")
             else:
-                st.info("No local SHAP artifact found for RandomForest in latest SHAP run; you can run SHAP scripts to generate them.")
+                st.info(
+                    "No local SHAP artifact found for RandomForest in latest SHAP run; you can run SHAP scripts to generate them."
+                )
 
             # Generate patient-friendly explanation and LLM prompt
             st.subheader("Patient-facing explanation (suggested)")
@@ -234,7 +287,7 @@ if patient_df is not None:
                 "Top_drivers": [{fn: float(val)} for fn, val in top_drivers[:3]],
                 "Example_patient_context": ", ".join(context) or "n/a",
                 "Model_limitations": "Model provides probability estimates from historical data and does not determine individual outcomes.",
-                "Suggested_next_step": "Review with oncology team; combine with imaging and pathology"
+                "Suggested_next_step": "Review with oncology team; combine with imaging and pathology",
             }
             st.code(json.dumps(prompt, indent=2))
 
