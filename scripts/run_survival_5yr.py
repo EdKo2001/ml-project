@@ -38,7 +38,7 @@ def find_latest_run(results_dir: Path) -> Path:
 
 
 def load_pipeline(run_dir: Path):
-    model_path = run_dir / "survival_5yr_pipeline.joblib"
+    model_path = run_dir / "survival_5yr_random_forest_pipeline.joblib"
     if not model_path.exists():
         raise FileNotFoundError(f"Missing model at {model_path}")
     return joblib.load(model_path)
