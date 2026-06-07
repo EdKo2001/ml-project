@@ -22,10 +22,12 @@ Shared setup for the CS582 predictive maintenance project.
 Use a recent stable Python 3 release. We recommend Python 3.10, 3.11, or 3.12 for compatibility with the libraries used in this project.
 
 Use either the classic Jupyter Notebook or JupyterLab to run the notebooks. Recommended versions:
+
 - Python: 3.10 - 3.12
 - Jupyter Notebook: >=6.0 or JupyterLab: >=3.0
 
 Quick setup (Windows / PowerShell):
+
 ```powershell
 python -m venv .venv
 . .venv\Scripts\Activate.ps1
@@ -34,6 +36,7 @@ pip install -r requirements.txt
 ```
 
 Run the shared notebook:
+
 ```powershell
 jupyter notebook notebooks/01_shared_setup.ipynb
 ```
@@ -67,6 +70,7 @@ python src/prepare_breast_cancer_dataset.py
 ```
 
 This writes:
+
 - `data/processed/breast_cancer_processed.csv`
 - `data/processed/breast_cancer_profile.json`
 
@@ -79,6 +83,7 @@ python src/prepare_breast_cancer_dataset.py --raw-path data/raw/breast-cancer_3.
 ```
 
 This writes:
+
 - `data/processed/breast_cancer_3_processed.csv`
 - `data/processed/breast_cancer_3_profile.json`
 
@@ -91,6 +96,7 @@ python src/prepare_breast_cancer_survival_dataset.py
 ```
 
 This writes:
+
 - `data/processed/breast_cancer_survival_processed.csv`
 - `data/processed/breast_cancer_survival_profile.json`
 
@@ -105,6 +111,7 @@ Notebook files often contain execution outputs and absolute local paths (usernam
 Quick setup (recommended):
 
 PowerShell:
+
 ```powershell
 pip install nbstripout
 nbstripout --install
@@ -116,37 +123,62 @@ If you use the `pre-commit` framework, you can add a hook that invokes `nbstripo
 
 Why: stripping outputs keeps diffs small, avoids leaking local paths, and makes notebook reviews much cleaner.
 
-
 ## MLP baseline results
+
 Total records in dataset: 10,000
 Test set (n=2000):
+
 - Accuracy: 0.998
 - ROC AUC: 0.987
 - Confusion matrix: [[1931, 1], [4, 64]]
 - Class 1 (failure) precision/recall: 0.985 / 0.941
-Interpretation:
+  Interpretation:
 - Class 1 (failures) has precision 0.985 and recall 0.941.
 - Out of 68 failures, it missed 4 (false negatives) and correctly caught 64.
 - Class 0 has almost perfect precision/recall.
 - Confusion matrix breakdown: 1931 true negatives, 1 false positive, 4 false negatives, 64 true positives.
 - Confusion matrix meanings:
-	- 1931 = actual 0, predicted 0 (true negative)
-	- 1 = actual 0, predicted 1 (false positive)
-	- 4 = actual 1, predicted 0 (false negative)
-	- 64 = actual 1, predicted 1 (true positive)
+  - 1931 = actual 0, predicted 0 (true negative)
+  - 1 = actual 0, predicted 1 (false positive)
+  - 4 = actual 1, predicted 0 (false negative)
+  - 64 = actual 1, predicted 1 (true positive)
 
-	## Evaluation & Imbalance guidance
+  ## Evaluation & Imbalance guidance
+  - **Use F1, not just accuracy:** Report `precision`, `recall`, and `f1` (use `sklearn.metrics.f1_score`) in addition to accuracy and AUC to properly evaluate models on imbalanced data.
+  - **Handle class imbalance:** recommended approaches:
+    - Resampling: `SMOTE`, `RandomOverSampler`, `RandomUnderSampler` from `imbalanced-learn`.
+    - Class weights / sample weights: use `class_weight='balanced'` or `sample_weight` when supported by the estimator.
+    - Evaluate using stratified CV and report per-class metrics.
+  - **SHAP:** `shap` is included in `requirements.txt` — use `shap.Explainer` to produce feature importance and per-sample explanations and save figures to `results/metrics`.
 
-	- **Use F1, not just accuracy:** Report `precision`, `recall`, and `f1` (use `sklearn.metrics.f1_score`) in addition to accuracy and AUC to properly evaluate models on imbalanced data.
-	- **Handle class imbalance:** recommended approaches:
-		- Resampling: `SMOTE`, `RandomOverSampler`, `RandomUnderSampler` from `imbalanced-learn`.
-		- Class weights / sample weights: use `class_weight='balanced'` or `sample_weight` when supported by the estimator.
-		- Evaluate using stratified CV and report per-class metrics.
-	- **SHAP:** `shap` is included in `requirements.txt` — use `shap.Explainer` to produce feature importance and per-sample explanations and save figures to `results/metrics`.
+  ## Future work (suggestions)
+  - Explore deep learning feature extraction for richer representations (autoencoders, pretrained sequence models, or 1D-CNNs for time-series sensor data).
+  - Investigate hierarchical or temporal models if you have timestamped sensor streams (LSTM/Transformer-based feature encoders).
+  - Add a reproducible evaluation harness: a small `src/eval.py` that standardizes metrics output (JSON) and `src/imbalance.py` helpers for resampling/class weights.
+  - Production notes: prepare a minimal model-serving demo (FastAPI + Docker) and include calibration checks for probabilistic outputs.
 
-	## Future work (suggestions)
 
-	- Explore deep learning feature extraction for richer representations (autoencoders, pretrained sequence models, or 1D-CNNs for time-series sensor data).
-	- Investigate hierarchical or temporal models if you have timestamped sensor streams (LSTM/Transformer-based feature encoders).
-	- Add a reproducible evaluation harness: a small `src/eval.py` that standardizes metrics output (JSON) and `src/imbalance.py` helpers for resampling/class weights.
-	- Production notes: prepare a minimal model-serving demo (FastAPI + Docker) and include calibration checks for probabilistic outputs.
+  ## Recent work & next steps
+
+  - **What was done:** Added small evaluation and imbalance helpers and a breast-cancer pipeline to prepare, train, evaluate (F1), and save a model.
+    - Added `src/eval.py`, `src/imbalance.py`, and `src/breast_cancer_pipeline.py`.
+    - Fixed evaluation and imbalance helper edge cases (binary label handling and class-weight computation).
+    - Ran the pipeline (class-weight strategy) and produced `results/metrics/breast_cancer_metrics.json` and `results/metrics/breast_cancer_model.joblib`.
+
+  - **What to commit & push next:**
+    - Commit this README change (if not already committed) and push the branch. If you want the pipeline artifacts tracked, decide whether to add them or store externally (usually large binaries go in artifact storage, not git).
+
+  Commands (PowerShell):
+  ```powershell
+  git status
+  git add README.md
+  git commit -m "docs: record recent work and next steps"
+  git push origin HEAD
+  ```
+
+  If you prefer to push all local commits without adding the README separately, run:
+  ```powershell
+  git push origin HEAD
+  ```
+
+  If you'd like, I can push the branch for you or add a small notebook cell to generate SHAP plots next.
