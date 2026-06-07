@@ -45,23 +45,28 @@ if "survived_5yr" not in df.columns:
         )
 
 # Add stable uid if missing
-if 'uid' not in df.columns:
-    df = df.reset_index().rename(columns={'index': 'uid'})
-    df['uid'] = df['uid'].astype(str)
+if "uid" not in df.columns:
+    df = df.reset_index().rename(columns={"index": "uid"})
+    df["uid"] = df["uid"].astype(str)
 
 # Exclude heldout UIDs from training if present
 if HELDOUT_UIDS.exists():
     try:
         heldout_uids = set(json.loads(HELDOUT_UIDS.read_text()))
         before = len(df)
-        df = df[~df['uid'].isin(heldout_uids)]
+        df = df[~df["uid"].isin(heldout_uids)]
         after = len(df)
-        print(f"Excluded {before - after} heldout rows from training (uids from {HELDOUT_UIDS})")
+        print(
+            f"Excluded {before - after} heldout rows from training (uids from {HELDOUT_UIDS})"
+        )
     except Exception as e:
-        print('Failed to read heldout UIDs:', e)
+        print("Failed to read heldout UIDs:", e)
+
+# Keep uid only for record separation; never let it enter the feature matrix.
+df_model = df.drop(columns=["uid"], errors="ignore")
 
 # Build preprocessing
-info = make_shared_preprocessing_pipeline(df, target_column="survived_5yr")
+info = make_shared_preprocessing_pipeline(df_model, target_column="survived_5yr")
 X = info["X"]
 y = info["y"]
 pre = info["preprocessor"]

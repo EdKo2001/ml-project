@@ -7,6 +7,7 @@ Saves:
 Usage:
     $env:PYTHONPATH="."; python scripts/create_heldout.py --frac 0.05
 """
+
 from __future__ import annotations
 
 import argparse
@@ -37,7 +38,9 @@ def make_heldout(frac: float = 0.05, random_state: int = 42):
         if "survival_months" in df.columns:
             df["survived_5yr"] = (df["survival_months"] >= 60).astype(int)
         else:
-            raise ValueError("Neither 'survived_5yr' nor 'survival_months' found in processed CSV")
+            raise ValueError(
+                "Neither 'survived_5yr' nor 'survival_months' found in processed CSV"
+            )
 
     # Determine heldout size
     if frac <= 0 or frac >= 1:
@@ -61,8 +64,14 @@ def make_heldout(frac: float = 0.05, random_state: int = 42):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Create stratified heldout set for survival dataset")
-    parser.add_argument("--frac", type=float, default=0.05, help="Fraction to hold out (0-1)")
-    parser.add_argument("--random-state", type=int, default=42, help="Random state for reproducibility")
+    parser = argparse.ArgumentParser(
+        description="Create stratified heldout set for survival dataset"
+    )
+    parser.add_argument(
+        "--frac", type=float, default=0.05, help="Fraction to hold out (0-1)"
+    )
+    parser.add_argument(
+        "--random-state", type=int, default=42, help="Random state for reproducibility"
+    )
     args = parser.parse_args()
     make_heldout(frac=args.frac, random_state=args.random_state)
