@@ -43,7 +43,6 @@ The project includes `shap` as an optional dependency. Use SHAP to generate feat
 
 ## Next steps
 
-- Compare class-weight vs resampling strategies and document results.
 - Add SHAP visualizations for chosen models and export findings to `results/metrics`.
 - Prepare a concise `RESULTS.md` summarizing evaluation numbers and recommendations for the final report.
 
@@ -57,8 +56,7 @@ If you want the README shortened further or tailored to a specific audience (ins
 
 ## Actionable next steps (proposal & professor feedback)
 
-- Evaluate and handle class imbalance: run experiments comparing `class_weight='balanced'` vs resampling (SMOTE / oversample / undersample) and record effects on F1.
-- Evaluate and handle class imbalance: run experiments comparing `class_weight='balanced'` vs resampling (SMOTE / oversample / undersample) and record effects on F1.
+ 
 - Standardize evaluation: use stratified cross-validation and report accuracy, precision, recall, F1, and ROC-AUC for all models; store JSON reports in `results/metrics` (see `src/eval.py`).
 - Baseline model: implement Logistic Regression baseline (proposal) and compare with Random Forest / MLP baselines; prefer F1 as primary metric.
 - Explainability: run SHAP on final models to produce global and local explanations; export SHAP plots and short interpretation notes to `results/metrics`.
