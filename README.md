@@ -1,184 +1,68 @@
 # ml-project
 
-Shared setup for the CS582 predictive maintenance project.
+Shared code and experiments for the CS582 predictive-maintenance and breast-cancer modeling tasks.
 
-## Structure
+## Repository layout
 
-- `data/` for raw and cleaned data
-- `notebooks/` for shared analysis and model work
-- `src/` for reusable code
-- `results/` for metrics, plots, and exports
-- `slides/` for presentation files
+- `data/` — raw and processed datasets
+- `notebooks/` — exploratory analysis and modeling notebooks
+- `src/` — reusable modules and scripts
+- `results/` — generated metrics, models, and visualizations
+- `slides/` — presentation materials
+
+## Purpose
+
+This repository provides a shared preprocessing pipeline, model helpers, dataset preparation scripts, and evaluation utilities intended for classroom experiments and reproducible analyses.
+
+## Notes on setup
+
+Use a recent Python 3.10+ runtime. Install project dependencies from `requirements.txt` in your preferred environment manager. The code has been tested with scikit-learn and the common scientific Python stack.
+
+## Core components
+
+- `src/data_pipeline.py`: shared entrypoint to load data, build preprocessing, and produce train/test splits.
+- `src/preprocessing.py`: preprocessing helpers and a ColumnTransformer builder.
+- `src/models.py`: factory for common classifiers used in experiments.
+- `src/prepare_breast_cancer_dataset.py` and `src/prepare_breast_cancer_survival_dataset.py`: dataset-specific cleaning and profiling scripts.
+- `src/eval.py` and `src/imbalance.py`: lightweight evaluation and imbalance-handling helpers.
+- `src/breast_cancer_pipeline.py`: example pipeline that trains, evaluates (F1), and saves a breast-cancer model.
+
+## Evaluation guidance
+
+- Always report `precision`, `recall`, and `F1` in addition to accuracy and AUC when classes are imbalanced.
+- Use stratified cross-validation and report per-class metrics.
+- For imbalance handling, consider estimator `class_weight` or resampling (SMOTE/oversampling/undersampling) depending on the experiment.
+
+## Explainability
+
+The project includes `shap` as an optional dependency. Use SHAP to generate feature importance summaries and per-sample explanations for final models; save results to `results/metrics` for reproducibility.
+
+## Recent work
+
+- Added evaluation and imbalance helpers, and an example breast-cancer pipeline that prepares data, trains a classifier, computes F1, and stores model/metrics artifacts.
 
 ## Next steps
 
-1. Download the Kaggle dataset.
-2. Load it in one shared notebook.
-3. Check target balance and basic feature types.
-4. Build one preprocessing pipeline that everyone uses.
+- Compare class-weight vs resampling strategies and document results.
+- Add SHAP visualizations for chosen models and export findings to `results/metrics`.
+- Prepare a concise `RESULTS.md` summarizing evaluation numbers and recommendations for the final report.
 
-## Recommended versions & setup
+## Artifacts & versioning
 
-Use a recent stable Python 3 release. We recommend Python 3.10, 3.11, or 3.12 for compatibility with the libraries used in this project.
+Avoid committing large model binaries to git. Store models and large artifacts in external artifact storage or keep them in `results/` locally and add to `.gitignore` for repository cleanliness.
 
-Use either the classic Jupyter Notebook or JupyterLab to run the notebooks. Recommended versions:
+---
 
-- Python: 3.10 - 3.12
-- Jupyter Notebook: >=6.0 or JupyterLab: >=3.0
+If you want the README shortened further or tailored to a specific audience (instructors, teammates, or reviewers), tell me which audience and I'll refine it.
 
-Quick setup (Windows / PowerShell):
+## Actionable next steps (proposal & professor feedback)
 
-```powershell
-python -m venv .venv
-. .venv\Scripts\Activate.ps1
-pip install -U pip
-pip install -r requirements.txt
-```
+- Evaluate and handle class imbalance: run experiments comparing `class_weight='balanced'` vs resampling (SMOTE / oversample / undersample) and record effects on F1.
+- Evaluate and handle class imbalance: run experiments comparing `class_weight='balanced'` vs resampling (SMOTE / oversample / undersample) and record effects on F1.
+- Standardize evaluation: use stratified cross-validation and report accuracy, precision, recall, F1, and ROC-AUC for all models; store JSON reports in `results/metrics` (see `src/eval.py`).
+- Baseline model: implement Logistic Regression baseline (proposal) and compare with Random Forest / MLP baselines; prefer F1 as primary metric.
+- Explainability: run SHAP on final models to produce global and local explanations; export SHAP plots and short interpretation notes to `results/metrics`.
+- Future work extensions: experiment with deep-learning feature extraction (autoencoders, 1D-CNNs or pretrained encoders) and evaluate their impact on downstream classifiers.
+- Documentation & deliverables: produce `RESULTS.md` summarizing experiments, a short methods section, and final presentation slides; include the Lab 6 solution as referenced by the instructor.
 
-Run the shared notebook:
-
-```powershell
-jupyter notebook notebooks/01_shared_setup.ipynb
-```
-
-If you prefer `conda`, create a conda env and install the dependencies from `requirements.txt` or manually install the packages listed there.
-
-## Shared pipeline usage
-
-Use the shared entrypoint so everyone loads data, builds preprocessing, and splits the same way:
-
-```python
-from src.data_pipeline import build_data_pipeline
-
-artifacts = build_data_pipeline(
-	"data/raw/predictive_maintenance.csv",
-	target_column="Machine failure",
-	test_size=0.2,
-	random_state=42,
-)
-
-X_train = artifacts.X_train
-y_train = artifacts.y_train
-```
-
-## Breast cancer dataset prep
-
-Prepare the diagnostic breast cancer dataset before model work:
-
-```powershell
-python src/prepare_breast_cancer_dataset.py
-```
-
-This writes:
-
-- `data/processed/breast_cancer_processed.csv`
-- `data/processed/breast_cancer_profile.json`
-
-The prep keeps `data/raw/breast_cancer_dataset.csv` unchanged, removes the non-predictive `id` column, removes the empty trailing header column, normalizes feature names to `snake_case`, and records the target balance. The target column remains `diagnosis`, with `M` as malignant and `B` as benign.
-
-Prepare the third breast cancer diagnostic dataset:
-
-```powershell
-python src/prepare_breast_cancer_dataset.py --raw-path data/raw/breast-cancer_3.csv --processed-path data/processed/breast_cancer_3_processed.csv --profile-path data/processed/breast_cancer_3_profile.json
-```
-
-This writes:
-
-- `data/processed/breast_cancer_3_processed.csv`
-- `data/processed/breast_cancer_3_profile.json`
-
-This dataset is the cleanest raw source for the diagnostic task. After preprocessing, it is identical to `data/processed/breast_cancer_processed.csv`.
-
-Prepare the breast cancer survival/status dataset separately:
-
-```powershell
-python src/prepare_breast_cancer_survival_dataset.py
-```
-
-This writes:
-
-- `data/processed/breast_cancer_survival_processed.csv`
-- `data/processed/breast_cancer_survival_profile.json`
-
-The prep keeps `data/raw/breast_cancer_dataset_2.csv` unchanged, normalizes headers to `snake_case`, corrects the `Reginol Node Positive` header typo to `regional_node_positive`, trims categorical values, converts `anaplastic; Grade IV` to grade `4`, removes exact duplicate rows, and records the `status` balance. For plain `status` classification, treat `survival_months` as an outcome field rather than a feature.
-
-See `data/processed/breast_cancer_dataset_comparison.md` for the three-dataset comparison and final recommendation.
-
-## Strip notebook outputs on commit (recommended)
-
-Notebook files often contain execution outputs and absolute local paths (usernames, local directories) that make diffs noisy and can leak personal information. We recommend stripping outputs before committing notebooks.
-
-Quick setup (recommended):
-
-PowerShell:
-
-```powershell
-pip install nbstripout
-nbstripout --install
-```
-
-This installs a git filter that removes cell outputs automatically when you commit `.ipynb` files. Alternatively, to enforce in-repo attributes, add the `.gitattributes` file (already included) and run the above install command.
-
-If you use the `pre-commit` framework, you can add a hook that invokes `nbstripout` or use `nbstripout --install` as part of your onboarding steps.
-
-Why: stripping outputs keeps diffs small, avoids leaking local paths, and makes notebook reviews much cleaner.
-
-## MLP baseline results
-
-Total records in dataset: 10,000
-Test set (n=2000):
-
-- Accuracy: 0.998
-- ROC AUC: 0.987
-- Confusion matrix: [[1931, 1], [4, 64]]
-- Class 1 (failure) precision/recall: 0.985 / 0.941
-  Interpretation:
-- Class 1 (failures) has precision 0.985 and recall 0.941.
-- Out of 68 failures, it missed 4 (false negatives) and correctly caught 64.
-- Class 0 has almost perfect precision/recall.
-- Confusion matrix breakdown: 1931 true negatives, 1 false positive, 4 false negatives, 64 true positives.
-- Confusion matrix meanings:
-  - 1931 = actual 0, predicted 0 (true negative)
-  - 1 = actual 0, predicted 1 (false positive)
-  - 4 = actual 1, predicted 0 (false negative)
-  - 64 = actual 1, predicted 1 (true positive)
-
-  ## Evaluation & Imbalance guidance
-  - **Use F1, not just accuracy:** Report `precision`, `recall`, and `f1` (use `sklearn.metrics.f1_score`) in addition to accuracy and AUC to properly evaluate models on imbalanced data.
-  - **Handle class imbalance:** recommended approaches:
-    - Resampling: `SMOTE`, `RandomOverSampler`, `RandomUnderSampler` from `imbalanced-learn`.
-    - Class weights / sample weights: use `class_weight='balanced'` or `sample_weight` when supported by the estimator.
-    - Evaluate using stratified CV and report per-class metrics.
-  - **SHAP:** `shap` is included in `requirements.txt` — use `shap.Explainer` to produce feature importance and per-sample explanations and save figures to `results/metrics`.
-
-  ## Future work (suggestions)
-  - Explore deep learning feature extraction for richer representations (autoencoders, pretrained sequence models, or 1D-CNNs for time-series sensor data).
-  - Investigate hierarchical or temporal models if you have timestamped sensor streams (LSTM/Transformer-based feature encoders).
-  - Add a reproducible evaluation harness: a small `src/eval.py` that standardizes metrics output (JSON) and `src/imbalance.py` helpers for resampling/class weights.
-  - Production notes: prepare a minimal model-serving demo (FastAPI + Docker) and include calibration checks for probabilistic outputs.
-
-
-  ## Recent work & next steps
-
-  - **What was done:** Added small evaluation and imbalance helpers and a breast-cancer pipeline to prepare, train, evaluate (F1), and save a model.
-    - Added `src/eval.py`, `src/imbalance.py`, and `src/breast_cancer_pipeline.py`.
-    - Fixed evaluation and imbalance helper edge cases (binary label handling and class-weight computation).
-    - Ran the pipeline (class-weight strategy) and produced `results/metrics/breast_cancer_metrics.json` and `results/metrics/breast_cancer_model.joblib`.
-
-  - **What to commit & push next:**
-    - Commit this README change (if not already committed) and push the branch. If you want the pipeline artifacts tracked, decide whether to add them or store externally (usually large binaries go in artifact storage, not git).
-
-  Commands (PowerShell):
-  ```powershell
-  git status
-  git add README.md
-  git commit -m "docs: record recent work and next steps"
-  git push origin HEAD
-  ```
-
-  If you prefer to push all local commits without adding the README separately, run:
-  ```powershell
-  git push origin HEAD
-  ```
-
-  If you'd like, I can push the branch for you or add a small notebook cell to generate SHAP plots next.
+These steps map directly to the proposal and to the professor's comments: prioritize balancing the dataset, use F1 for selection, and add SHAP-based explanations and a future-work plan involving deep-learning feature extraction.
