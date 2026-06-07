@@ -20,6 +20,8 @@ PROCESSED_SURVIVAL = (
     ROOT / "data" / "processed" / "breast_cancer_survival_processed.csv"
 )
 PROCESSED_DIAGNOSTIC = ROOT / "data" / "processed" / "breast_cancer_processed.csv"
+HELDOUT_SURVIVAL = ROOT / "data" / "processed" / "heldout_survival.csv"
+HELDOUT_DIAGNOSTIC = ROOT / "data" / "processed" / "heldout_diagnostic.csv"
 DEFAULT_MODEL = ROOT / "results" / "metrics" / "breast_cancer_model.joblib"
 RESULTS_DIR = ROOT / "results"
 
@@ -100,6 +102,16 @@ def shap_local_to_top(shap_obj: Any, feature_names: list[str], top_n: int = 5):
     return [(feature_names[i], float(contrib[i])) for i in idx]
 
 
+def input_columns_for_dataset(dataset_choice: str, df: pd.DataFrame) -> pd.DataFrame:
+    """Drop identifiers and target columns before model prediction."""
+    drop_cols = ["uid"]
+    if dataset_choice == "Survival":
+        drop_cols.extend(["survived_5yr", "survival_months", "status"])
+    else:
+        drop_cols.append("diagnosis")
+    return df.drop(columns=drop_cols, errors="ignore")
+
+
 def compute_live_shap_local(
     model: Any, patient_df: pd.DataFrame, background_df: pd.DataFrame
 ):
@@ -165,7 +177,13 @@ dataset_choice = st.sidebar.selectbox(
 )
 
 selected_path = (
-    PROCESSED_SURVIVAL if dataset_choice == "Survival" else PROCESSED_DIAGNOSTIC
+    HELDOUT_SURVIVAL
+    if dataset_choice == "Survival" and HELDOUT_SURVIVAL.exists()
+    else HELDOUT_DIAGNOSTIC
+    if dataset_choice == "Diagnostic" and HELDOUT_DIAGNOSTIC.exists()
+    else PROCESSED_SURVIVAL
+    if dataset_choice == "Survival"
+    else PROCESSED_DIAGNOSTIC
 )
 if not selected_path.exists():
     st.warning(
@@ -175,6 +193,9 @@ if not selected_path.exists():
 df = None
 if selected_path.exists():
     df = pd.read_csv(selected_path)
+    if "uid" not in df.columns:
+        df = df.reset_index().rename(columns={"index": "uid"})
+        df["uid"] = df["uid"].astype(str)
 
 st.sidebar.header("Model selection")
 # Discover available model files in results/metrics
@@ -264,6 +285,8 @@ if patient_df is not None:
     st.subheader("Patient data preview")
     st.dataframe(patient_df)
 
+    model_input_df = input_columns_for_dataset(dataset_choice, patient_df)
+
     if model is None:
         st.warning(
             "No model available to predict. Provide a model to enable predictions."
@@ -278,7 +301,7 @@ if patient_df is not None:
             if pre is not None:
                 try:
                     expected_feats = list(
-                        pre.get_feature_names_out(patient_df.columns.tolist())
+                        pre.get_feature_names_out(model_input_df.columns.tolist())
                     )
                 except Exception:
                     try:
@@ -293,7 +316,7 @@ if patient_df is not None:
         # Map transformed feature names back to raw column names by substring matching
         missing_raw = None
         if expected_feats is not None:
-            raw_cols = set(patient_df.columns.tolist())
+            raw_cols = set(model_input_df.columns.tolist())
             unmatched = []
             for feat in expected_feats:
                 mapped = False
@@ -343,10 +366,10 @@ if patient_df is not None:
             proba = None
         else:
             try:
-                proba = model.predict_proba(patient_df)[0, 1]
+                    proba = model.predict_proba(model_input_df)[0, 1]
             except Exception:
                 try:
-                    proba = float(model.predict(patient_df)[0])
+                    proba = float(model.predict(model_input_df)[0])
                 except Exception as e:
                     st.error(f"Model evaluation failed: {e}")
                     proba = None
@@ -380,21 +403,25 @@ if patient_df is not None:
                     if pre is not None:
                         try:
                             feat_names = pre.get_feature_names_out(
-                                patient_df.columns.tolist()
+                                model_input_df.columns.tolist()
                             )
                         except Exception:
-                            feat_names = patient_df.columns.tolist()
+                            feat_names = model_input_df.columns.tolist()
                     else:
-                        feat_names = patient_df.columns.tolist()
+                        feat_names = model_input_df.columns.tolist()
                     top_drivers = shap_local_to_top(shap_local, feat_names, top_n=5)
                 except Exception:
                     top_drivers = []
 
                 if not top_drivers:
-                    live_shap, feat_names = compute_live_shap_local(model, patient_df, df)
+                    live_shap, feat_names = compute_live_shap_local(
+                        model, model_input_df, model_input_df
+                    )
                     if live_shap is not None:
                         try:
-                            top_drivers = shap_local_to_top(live_shap, feat_names, top_n=5)
+                            top_drivers = shap_local_to_top(
+                                live_shap, feat_names, top_n=5
+                            )
                         except Exception:
                             top_drivers = []
 
@@ -404,7 +431,7 @@ if patient_df is not None:
                     st.write(f"- **{fn}**: {val:+.3f}")
             else:
                 st.info(
-                        "SHAP could not be read from the saved run, so the app could not show local drivers for this model."
+                    "SHAP could not be read from the saved run, so the app could not show local drivers for this model."
                 )
 
             # Generate patient-friendly explanation and LLM prompt
