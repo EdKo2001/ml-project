@@ -40,7 +40,12 @@ SPECS = {
 }
 
 
-def _prepare_df(proc_path: Path, target: str, derived_target: str | None, derived_target_threshold: int | None):
+def _prepare_df(
+    proc_path: Path,
+    target: str,
+    derived_target: str | None,
+    derived_target_threshold: int | None,
+):
     if not proc_path.exists():
         raise FileNotFoundError(f"Processed CSV not found: {proc_path}")
 
@@ -50,17 +55,28 @@ def _prepare_df(proc_path: Path, target: str, derived_target: str | None, derive
         df["uid"] = df.index.astype(str)
 
     if target not in df.columns:
-        if derived_target and derived_target in df.columns and derived_target_threshold is not None:
+        if (
+            derived_target
+            and derived_target in df.columns
+            and derived_target_threshold is not None
+        ):
             df[target] = (df[derived_target] >= derived_target_threshold).astype(int)
         else:
-            raise ValueError(f"Target column '{target}' not found in processed CSV {proc_path}")
+            raise ValueError(
+                f"Target column '{target}' not found in processed CSV {proc_path}"
+            )
 
     return df
 
 
 def _make_heldout_for_spec(name: str, frac: float, random_state: int):
     spec = SPECS[name]
-    df = _prepare_df(spec["proc"], spec["target"], spec["derived_target"], spec["derived_target_threshold"])
+    df = _prepare_df(
+        spec["proc"],
+        spec["target"],
+        spec["derived_target"],
+        spec["derived_target_threshold"],
+    )
 
     if frac <= 0 or frac >= 1:
         raise ValueError("frac must be between 0 and 1")

@@ -106,7 +106,7 @@ def input_columns_for_dataset(dataset_choice: str, df: pd.DataFrame) -> pd.DataF
     """Drop identifiers and target columns before model prediction."""
     drop_cols = ["uid"]
     if dataset_choice == "Survival":
-        drop_cols.extend(["survived_5yr", "survival_months", "status"])
+        drop_cols.extend(["survived_5yr"])
     else:
         drop_cols.append("diagnosis")
     return df.drop(columns=drop_cols, errors="ignore")
@@ -362,7 +362,7 @@ if patient_df is not None:
             proba = None
         else:
             try:
-                    proba = model.predict_proba(model_input_df)[0, 1]
+                proba = model.predict_proba(model_input_df)[0, 1]
             except Exception:
                 try:
                     proba = float(model.predict(model_input_df)[0])
@@ -389,25 +389,6 @@ if patient_df is not None:
 
             top_drivers = []
             if shap_local is not None:
-                try:
-                    # try to reconstruct feature names from pipeline preprocessor
-                    pre = (
-                        model.named_steps.get("preprocessor")
-                        if hasattr(model, "named_steps")
-                        else None
-                    )
-                    if pre is not None:
-                        try:
-                            feat_names = pre.get_feature_names_out(
-                                model_input_df.columns.tolist()
-                            )
-                        except Exception:
-                            feat_names = model_input_df.columns.tolist()
-                    else:
-                        feat_names = model_input_df.columns.tolist()
-                    top_drivers = shap_local_to_top(shap_local, feat_names, top_n=5)
-                except Exception:
-                    top_drivers = []
 
                 if not top_drivers:
                     live_shap, feat_names = compute_live_shap_local(
