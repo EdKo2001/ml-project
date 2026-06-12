@@ -1,6 +1,6 @@
 # ml-project
 
-Shared code and experiments for the CS582 predictive-maintenance and breast-cancer modeling tasks.
+Shared code and experiments for the CS582 predictive-maintenance and breast-cancer modeling tasks
 
 ## Repository layout
 
