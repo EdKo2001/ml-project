@@ -1,0 +1,2 @@
+age,race,marital_status,t_stage,n_stage,sixth_stage,differentiation,grade,a_stage,tumor_size,estrogen_status,progesterone_status,regional_node_examined,regional_node_positive,survival_months,status
+50,White,Married,T2,N2,IIIA,Moderately differentiated,2,Regional,35,Positive,Positive,14,5,62,Alive
