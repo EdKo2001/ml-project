@@ -13,6 +13,7 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 TARGET_CANDIDATES = ["diagnosis", "status", "target", "label"]
 ID_DROP_COLUMNS = ["id", "ID", "Unnamed: 32", "empty_trailing_header_column"]
+SURVIVAL_LEAKAGE_COLUMNS = ["survival_months", "status"]
 
 
 def load_data(path: str) -> pd.DataFrame:
@@ -35,6 +36,10 @@ def prepare_features_and_target(df: pd.DataFrame, target_column: str | None = No
         for column in ID_DROP_COLUMNS
         if column in df.columns and column != target_column
     ]
+    if target_column == "survived_5yr":
+        for column in SURVIVAL_LEAKAGE_COLUMNS:
+            if column in df.columns and column not in drop_columns:
+                drop_columns.append(column)
     X = df.drop(columns=[target_column] + drop_columns, errors="ignore")
     y = df[target_column]
     return X, y, target_column, drop_columns

@@ -20,7 +20,7 @@ import sys
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from src.preprocessing import make_shared_preprocessing_pipeline
+from src.preprocessing import SURVIVAL_LEAKAGE_COLUMNS, make_shared_preprocessing_pipeline
 from src.models import get_model
 from sklearn.pipeline import Pipeline
 

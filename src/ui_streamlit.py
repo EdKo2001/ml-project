@@ -15,6 +15,8 @@ import pandas as pd
 
 import streamlit as st
 
+from src.preprocessing import SURVIVAL_LEAKAGE_COLUMNS
+
 ROOT = Path(__file__).resolve().parents[1]
 PROCESSED_SURVIVAL = (
     ROOT / "data" / "processed" / "breast_cancer_survival_processed.csv"
@@ -103,13 +105,78 @@ def shap_local_to_top(shap_obj: Any, feature_names: list[str], top_n: int = 5):
 
 
 def input_columns_for_dataset(dataset_choice: str, df: pd.DataFrame) -> pd.DataFrame:
-    """Drop identifiers and target columns before model prediction."""
+    """Drop identifiers and target/leakage columns before model prediction."""
     drop_cols = ["uid"]
     if dataset_choice == "Survival":
-        drop_cols.extend(["survived_5yr"])
+        drop_cols.extend(["survived_5yr", *SURVIVAL_LEAKAGE_COLUMNS])
     else:
         drop_cols.append("diagnosis")
     return df.drop(columns=drop_cols, errors="ignore")
+
+
+def discover_model_files() -> list[Path]:
+    """Collect trained pipeline artifacts from metrics/ and survival run folders."""
+    paths: list[Path] = []
+    metrics_dir = ROOT / "results" / "metrics"
+    if metrics_dir.exists():
+        paths.extend(metrics_dir.glob("*.joblib"))
+    for pattern in ("survival_5yr_*", "survival_5yr_rf_*"):
+        for run_dir in sorted(RESULTS_DIR.glob(pattern)):
+            paths.extend(run_dir.glob("*.joblib"))
+    if DEFAULT_MODEL.exists():
+        paths.append(DEFAULT_MODEL)
+    return sorted({p.resolve() for p in paths if p.is_file()})
+
+
+def model_dataset_kind(path: Path) -> str:
+    """Infer whether a saved pipeline targets survival or diagnostic data."""
+    token = f"{path.parent.name}/{path.name}".lower()
+    if "survival" in token or "surv_5yr" in token:
+        return "Survival"
+    return "Diagnostic"
+
+
+def pipeline_input_columns(model: Any) -> list[str] | None:
+    """Return raw input column names expected by a fitted sklearn Pipeline."""
+    if hasattr(model, "named_steps"):
+        pre = model.named_steps.get("preprocessor")
+        if pre is not None and hasattr(pre, "feature_names_in_"):
+            return list(pre.feature_names_in_)
+    if hasattr(model, "feature_names_in_"):
+        return list(model.feature_names_in_)
+    return None
+
+
+def models_for_dataset(dataset_choice: str, paths: list[Path]) -> list[Path]:
+    return [p for p in paths if model_dataset_kind(p) == dataset_choice]
+
+
+def model_display_name(path: Path) -> str:
+    if path.parent.name in {"metrics", ".", ""}:
+        return path.name
+    return f"{path.name} ({path.parent.name})"
+
+
+def validate_model_inputs(model: Any, model_input_df: pd.DataFrame) -> tuple[bool, list[str]]:
+    expected = pipeline_input_columns(model)
+    if not expected:
+        return True, []
+    missing = [col for col in expected if col not in model_input_df.columns]
+    return not missing, missing
+
+
+def positive_class_index(model: Any, proba_row: np.ndarray) -> int:
+    classes = getattr(model, "classes_", None)
+    if classes is None and hasattr(model, "named_steps"):
+        classes = getattr(model.named_steps.get("model"), "classes_", None)
+    if classes is not None:
+        classes_list = list(classes)
+        for preferred in (1, "M", "malignant", "Dead"):
+            if preferred in classes_list:
+                return classes_list.index(preferred)
+        if len(classes_list) > 1:
+            return 1
+    return 1 if len(proba_row) > 1 else 0
 
 
 def compute_live_shap_local(
@@ -198,71 +265,52 @@ if selected_path.exists():
         df["uid"] = df["uid"].astype(str)
 
 st.sidebar.header("Model selection")
-# Discover available model files in results/metrics
+all_models = discover_model_files()
+compatible_models = models_for_dataset(dataset_choice, all_models)
 model_path = None
-metrics_dir = ROOT / "results" / "metrics"
-available_models = []
-if metrics_dir.exists():
-    available_models = sorted([p for p in metrics_dir.glob("*.joblib") if p.is_file()])
-
-model_choices = [p.name for p in available_models]
-if DEFAULT_MODEL.exists() and DEFAULT_MODEL.name not in model_choices:
-    model_choices.insert(0, DEFAULT_MODEL.name)
-
-
-# Auto-select a model that matches the chosen dataset when possible
-def _auto_select_model_for_dataset(dataset: str, choices: list[str]) -> str | None:
-    if not choices:
-        return None
-    lower = [c.lower() for c in choices]
-    if dataset == "Survival":
-        surv = [c for c in choices if "survival" in c.lower()]
-        if surv:
-            return surv[-1]
-        # fallback: any model with 'surv' substring
-        surv2 = [c for c in choices if "surv" in c.lower()]
-        if surv2:
-            return surv2[-1]
-        return None
-    # Diagnostic dataset
-    # Prefer the default diagnostic model name, else any non-survival model
-    if DEFAULT_MODEL.name in choices:
-        return DEFAULT_MODEL.name
-    non_surv = [c for c in choices if "survival" not in c.lower()]
-    if non_surv:
-        return non_surv[0]
-    return None
-
-
-auto_model = _auto_select_model_for_dataset(dataset_choice, model_choices)
-sel_model_name = None
-if model_choices:
-    # selectbox options include an empty option for manual 'none'
-    opts = ("",) + tuple(model_choices)
-    # determine default index: 0 means empty selection
-    default_index = 0
-    if auto_model and auto_model in model_choices:
-        default_index = model_choices.index(auto_model) + 1
-    sel_model_name = st.sidebar.selectbox(
-        "Choose a model file", opts, index=default_index
-    )
-    if sel_model_name == "" and auto_model is not None:
-        # if user hasn't manually chosen, show that we auto-selected and allow them to pick
-        st.sidebar.write(f"Auto-suggested model for {dataset_choice}: {auto_model}")
-
-if sel_model_name:
-    candidate = metrics_dir / sel_model_name
-    if not candidate.exists() and Path(sel_model_name).exists():
-        candidate = Path(sel_model_name)
-    model_path = candidate
-
-if model_path is None:
-    st.sidebar.info(
-        "No model selected. Upload a joblib Pipeline or place a model in results/metrics"
-    )
-
 model = None
-if model_path is not None:
+
+if not all_models:
+    st.sidebar.info(
+        "No trained models found. Run `python -m src.breast_cancer_pipeline` "
+        "or notebook 07 for survival models."
+    )
+elif not compatible_models:
+    st.sidebar.warning(
+        f"No **{dataset_choice}** model found for this dataset. "
+        f"Switch dataset or train a matching pipeline first."
+    )
+    other = "Diagnostic" if dataset_choice == "Survival" else "Survival"
+    other_models = models_for_dataset(other, all_models)
+    if other_models:
+        st.sidebar.caption(f"Available {other} models: {', '.join(p.name for p in other_models)}")
+else:
+    labels = [model_display_name(p) for p in compatible_models]
+    preferred = None
+    if dataset_choice == "Diagnostic" and DEFAULT_MODEL.exists():
+        preferred = DEFAULT_MODEL.resolve()
+    elif dataset_choice == "Survival":
+        for candidate in compatible_models:
+            if "random_forest" in candidate.name.lower():
+                preferred = candidate.resolve()
+                break
+        if preferred is None:
+            preferred = compatible_models[-1].resolve()
+
+    default_index = 0
+    if preferred is not None:
+        for i, path in enumerate(compatible_models):
+            if path.resolve() == preferred:
+                default_index = i
+                break
+
+    selected_label = st.sidebar.selectbox(
+        "Choose a model file",
+        labels,
+        index=default_index,
+        key=f"model_select_{dataset_choice}",
+    )
+    model_path = compatible_models[labels.index(selected_label)]
     model = get_model_with_cache(model_path)
 
 st.header("Select patient input")
@@ -285,122 +333,74 @@ if patient_df is not None:
 
     if model is None:
         st.warning(
-            "No model available to predict. Provide a model to enable predictions."
+            "No compatible model available for this dataset. "
+            "Train a matching pipeline or switch the dataset in the sidebar."
         )
     else:
-        # Verify that the model and patient row have matching features
-        expected_feats = None
-        pre = None
-        try:
-            if hasattr(model, "named_steps"):
-                pre = model.named_steps.get("preprocessor")
-            if pre is not None:
-                try:
-                    expected_feats = list(
-                        pre.get_feature_names_out(model_input_df.columns.tolist())
-                    )
-                except Exception:
-                    try:
-                        expected_feats = list(pre.get_feature_names_out())
-                    except Exception:
-                        expected_feats = None
-            elif hasattr(model, "feature_names_in_"):
-                expected_feats = list(model.feature_names_in_)
-        except Exception:
-            expected_feats = None
+        ok, missing = validate_model_inputs(model, model_input_df)
+        proba = None
 
-        # Map transformed feature names back to raw column names by substring matching
-        missing_raw = None
-        if expected_feats is not None:
-            raw_cols = set(model_input_df.columns.tolist())
-            unmatched = []
-            for feat in expected_feats:
-                mapped = False
-                for rc in raw_cols:
-                    if rc in feat:
-                        mapped = True
-                        break
-                if not mapped:
-                    base = feat.split("__", 1)[-1] if "__" in feat else feat
-                    for rc in raw_cols:
-                        if rc in base or base in rc:
-                            mapped = True
-                            break
-                if not mapped:
-                    unmatched.append(feat)
-            if unmatched:
-                missing_raw = sorted(
-                    list({u.split("__", 1)[-1] if "__" in u else u for u in unmatched})
-                )
-
-        if missing_raw:
+        if not ok:
             st.error(
-                "Model evaluation failed: columns are missing: {}".format(missing_raw)
+                "Selected model does not match this dataset. Missing columns: "
+                + ", ".join(missing)
             )
             st.info(
-                "Possible fixes: select the matching processed dataset in the sidebar, upload a one-row CSV matching the model inputs, or run dataset preparation."
+                "Pick a model from the sidebar that matches the selected dataset, "
+                "or switch between Survival and Diagnostic."
             )
-            if st.button("Switch to Diagnostic dataset"):
-                try:
-                    st.session_state["dataset_choice"] = "Diagnostic"
-                    st.experimental_rerun()
-                except Exception:
-                    st.warning(
-                        "Could not switch automatically; please select 'Diagnostic' from the sidebar."
-                    )
-
-            if st.button("Prepare processed datasets now"):
-                try:
-                    from src.finalize_dataset import main as finalize_main
-
-                    finalize_main()
-                    st.success(
-                        "Dataset preparation completed. Reload the app or re-select the dataset."
-                    )
-                except Exception as e:
-                    st.error(f"Failed to prepare datasets: {e}")
-            proba = None
         else:
             try:
-                proba = model.predict_proba(model_input_df)[0, 1]
+                probs = model.predict_proba(model_input_df)[0]
+                proba = float(probs[positive_class_index(model, probs)])
             except Exception:
                 try:
                     proba = float(model.predict(model_input_df)[0])
                 except Exception as e:
                     st.error(f"Model evaluation failed: {e}")
-                    proba = None
 
         if proba is not None:
             pct = int(round(proba * 100))
-            st.metric("Predicted 5-year survival (approx)", f"{pct}%")
-            risk_label = "low" if proba >= 0.5 else "intermediate-to-higher"
-            st.write(f"Risk group (threshold 0.5): **{risk_label}**")
+            if dataset_choice == "Survival":
+                st.metric("Predicted 5-year survival (approx)", f"{pct}%")
+                risk_label = "lower risk" if proba >= 0.5 else "intermediate-to-higher"
+                st.write(f"Risk group (threshold 0.5): **{risk_label}**")
+            else:
+                st.metric("Predicted malignant probability", f"{pct}%")
+                risk_label = "elevated" if proba >= 0.5 else "lower"
+                st.write(f"Risk group (threshold 0.5): **{risk_label}**")
 
-            # Attempt to find SHAP local joblib in the latest shap run.
-            # If that does not work, compute SHAP live from the currently selected model.
             shap_runs = sorted(
                 [p for p in RESULTS_DIR.glob("shap_compare_*") if p.is_dir()]
             )
             shap_local = None
             if shap_runs:
                 latest = shap_runs[-1]
-                shap_model_name = "logistic_regression" if "logistic" in str(model_path).lower() else "random_forest"
+                shap_model_name = (
+                    "logistic_regression"
+                    if "logistic" in str(model_path).lower()
+                    else "random_forest"
+                )
                 shap_local = load_shap_local(latest, shap_model_name)
 
             top_drivers = []
             if shap_local is not None:
+                try:
+                    feat_names = pipeline_input_columns(model) or model_input_df.columns.tolist()
+                    top_drivers = shap_local_to_top(shap_local, feat_names, top_n=5)
+                except Exception:
+                    top_drivers = []
 
-                if not top_drivers:
-                    live_shap, feat_names = compute_live_shap_local(
-                        model, model_input_df, model_input_df
-                    )
-                    if live_shap is not None:
-                        try:
-                            top_drivers = shap_local_to_top(
-                                live_shap, feat_names, top_n=5
-                            )
-                        except Exception:
-                            top_drivers = []
+            if not top_drivers and df is not None:
+                background_df = input_columns_for_dataset(dataset_choice, df)
+                live_shap, feat_names = compute_live_shap_local(
+                    model, model_input_df, background_df
+                )
+                if live_shap is not None:
+                    try:
+                        top_drivers = shap_local_to_top(live_shap, feat_names, top_n=5)
+                    except Exception:
+                        top_drivers = []
 
             if top_drivers:
                 st.subheader("Top contributing features (local SHAP)")
@@ -408,42 +408,55 @@ if patient_df is not None:
                     st.write(f"- **{fn}**: {val:+.3f}")
             else:
                 st.info(
-                    "SHAP could not be read from the saved run, so the app could not show local drivers for this model."
+                    "SHAP could not be computed for this model and patient row."
                 )
 
-            # Generate patient-friendly explanation and LLM prompt
             st.subheader("Patient-facing explanation (suggested)")
-            # Build simple natural-language explanation using template
-            feat_lines = []
-            for fn, val in top_drivers[:3]:
-                short = fn.replace("num__", "").replace("cat__", "")
-                reason = "increases" if val > 0 else "decreases"
-                feat_lines.append(f"{short}: {reason} risk")
-
             context = []
-            for k in ["age", "tumor_size", "regional_node_positive"]:
+            for k in ["age", "tumor_size", "regional_node_positive", "radius_mean", "diagnosis"]:
                 if k in patient_df.columns:
                     context.append(f"{k}={patient_df.iloc[0][k]}")
 
-            prob_alive = pct
-            rl = "intermediate-to-higher risk" if proba < 0.5 else "lower risk"
-            expl = (
-                f"Based on the information provided, this model estimates about a {prob_alive}% chance of being alive at 5 years, "
-                f"placing this case in a {rl} group. The factors that influenced this prediction most were: {', '.join([f for f,_ in top_drivers[:3]]) or 'clinical and tumor-related measurements'}. "
-                "This estimate is probabilistic and not a definitive medical judgment. Treatments, health status, and follow-up care can change outcomes. "
-                "Please review this estimate with your oncology team to combine it with imaging, pathology, and treatment options for a personalized plan."
-            )
-            st.write(expl)
+            driver_text = ", ".join(fn.replace("num__", "").replace("cat__", "") for fn, _ in top_drivers[:3])
+            if not driver_text:
+                driver_text = "clinical and tumor-related measurements"
 
+            if dataset_choice == "Survival":
+                rl = "intermediate-to-higher risk" if proba < 0.5 else "lower risk"
+                expl = (
+                    f"Based on the information provided, this model estimates about a {pct}% "
+                    f"chance of being alive at 5 years, placing this case in a {rl} group. "
+                    f"The factors that influenced this prediction most were: {driver_text}. "
+                    "This estimate is probabilistic and not a definitive medical judgment."
+                )
+                prompt = {
+                    "Predicted_probability_alive_5yr": f"{pct}%",
+                    "Risk_group_label": rl,
+                    "Top_drivers": [{fn: float(val)} for fn, val in top_drivers[:3]],
+                    "Example_patient_context": ", ".join(context) or "n/a",
+                }
+            else:
+                rl = "elevated malignant risk" if proba >= 0.5 else "lower malignant risk"
+                expl = (
+                    f"This model estimates a {pct}% probability of malignancy ({rl}). "
+                    f"The strongest contributors were: {driver_text}. "
+                    "This is a research tool and not a clinical diagnosis."
+                )
+                prompt = {
+                    "Predicted_malignant_probability": f"{pct}%",
+                    "Risk_group_label": rl,
+                    "Top_drivers": [{fn: float(val)} for fn, val in top_drivers[:3]],
+                    "Example_patient_context": ", ".join(context) or "n/a",
+                }
+
+            st.write(expl)
             st.subheader("LLM prompt (copy to your preferred LLM)")
-            prompt = {
-                "Predicted_probability_alive_5yr": f"{prob_alive}%",
-                "Risk_group_label": rl,
-                "Top_drivers": [{fn: float(val)} for fn, val in top_drivers[:3]],
-                "Example_patient_context": ", ".join(context) or "n/a",
-                "Model_limitations": "Model provides probability estimates from historical data and does not determine individual outcomes.",
-                "Suggested_next_step": "Review with oncology team; combine with imaging and pathology",
-            }
+            prompt["Model_limitations"] = (
+                "Model provides probability estimates from historical data only."
+            )
+            prompt["Suggested_next_step"] = (
+                "Review with oncology team; combine with imaging and pathology"
+            )
             st.code(json.dumps(prompt, indent=2))
 
 else:
