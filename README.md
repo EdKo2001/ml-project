@@ -1,65 +1,106 @@
 # ml-project
 
-Shared code and experiments for the CS582 predictive-maintenance and breast-cancer modeling tasks
+CS582 breast cancer machine learning project — diagnostic classification and survival modeling.
 
 ## Repository layout
 
-- `data/` — raw and processed datasets
+- `data/` — raw and processed breast cancer datasets
 - `notebooks/` — exploratory analysis and modeling notebooks
-- `src/` — reusable modules and scripts
+- `src/` — reusable modules, pipelines, and Streamlit UI
 - `results/` — generated metrics, models, and visualizations
 - `slides/` — presentation materials
+- `scripts/` — training, SHAP, and utility scripts
 
-## Purpose
+## Datasets
 
-This repository provides a shared preprocessing pipeline, model helpers, dataset preparation scripts, and evaluation utilities intended for classroom experiments and reproducible analyses.
+| Dataset | File | Task |
+|---|---|---|
+| Wisconsin diagnostic | `data/raw/breast_cancer_dataset.csv` | Benign vs malignant (30 cell features) |
+| Survival / staging | `data/raw/breast_cancer_dataset_2.csv` | 5-year survival and mortality status |
 
-## Notes on setup
+Run `python -m src.finalize_dataset` to build processed CSVs under `data/processed/`.
 
-Use a recent Python 3.10+ runtime. Install project dependencies from `requirements.txt` in your preferred environment manager. The code has been tested with scikit-learn and the common scientific Python stack.
+## Data splitting (train / test / demo holdout)
+
+All modeling scripts use the same reproducible split settings unless noted otherwise:
+
+| Split | Share | Purpose |
+|---|---|---|
+| **Training** | 80% | Fit preprocessing, resampling (SMOTE), and the model |
+| **Test** | 20% | Final metrics only — never used for training or tuning |
+| **Demo holdout** (optional) | ~5% | Fixed patient rows for Streamlit/UI demos |
+
+**How the split is done**
+
+1. Load a processed CSV from `data/processed/`.
+2. Optionally remove demo rows first (see below).
+3. Run a **stratified** `train_test_split` with `test_size=0.2` and `random_state=42` so class proportions stay balanced in both sets.
+
+This is implemented in:
+
+- `src/preprocessing.py` → `split_data()`
+- `src/breast_cancer_pipeline.py` (diagnostic Random Forest)
+- `scripts/train_survival_model.py` and notebooks `06` / `07` (survival task)
+
+**Validation**
+
+The repo does **not** keep a separate validation holdout by default. During experiments, treat the 80% training block as the development set. For hyperparameter search or model selection, use **stratified k-fold cross-validation on the training split only** (for example `GridSearchCV` with `cv=5`), then report the final chosen model once on the 20% test set.
+
+Do not tune on the test set.
+
+**Demo holdout (separate from train/test)**
+
+For reproducible UI examples, create small stratified slices that are excluded from training when their UID list is present:
+
+```bash
+python scripts/create_heldout.py --frac 0.05 --random-state 42
+```
+
+This writes:
+
+- `data/processed/heldout_diagnostic.csv`
+- `data/processed/heldout_survival.csv`
+- `results/metrics/heldout_*_uids.json`
+
+`scripts/train_survival_model.py` drops any rows whose `uid` appears in `heldout_survival_uids.json` before the 80/20 split. The Streamlit app (`src/ui_streamlit.py`) can load these heldout CSVs for patient-level demos.
+
+**Example sizes (diagnostic dataset, 569 rows)**
+
+- Train: ~455 samples
+- Test: ~114 samples
+- Demo holdout (5%): ~28 samples (when generated)
+
+**Rules of thumb**
+
+- Fit preprocessing and resampling **inside** the training split only (pipelines in this repo do this via `Pipeline` + train-only SMOTE).
+- Pick models using F1 / recall on imbalanced targets, not accuracy alone.
+- Save JSON metric reports under `results/metrics/` for reproducibility.
+
+## Quick start
+
+```bash
+pip install -r requirements.txt
+python -m src.finalize_dataset
+python -m src.breast_cancer_pipeline
+streamlit run src/ui_streamlit.py
+```
 
 ## Core components
 
-- `src/data_pipeline.py`: shared entrypoint to load data, build preprocessing, and produce train/test splits.
-- `src/preprocessing.py`: preprocessing helpers and a ColumnTransformer builder.
-- `src/models.py`: factory for common classifiers used in experiments.
-- `src/prepare_breast_cancer_dataset.py` and `src/prepare_breast_cancer_survival_dataset.py`: dataset-specific cleaning and profiling scripts.
-- `src/eval.py` and `src/imbalance.py`: lightweight evaluation and imbalance-handling helpers.
-- `src/breast_cancer_pipeline.py`: example pipeline that trains, evaluates (F1), and saves a breast-cancer model.
+- `src/prepare_breast_cancer_dataset.py` — clean and profile the diagnostic dataset
+- `src/prepare_breast_cancer_survival_dataset.py` — clean and profile the survival dataset
+- `src/data_pipeline.py` / `src/preprocessing.py` — shared preprocessing and splits
+- `src/models.py` — Random Forest, Decision Tree, MLP factories
+- `src/breast_cancer_pipeline.py` — train, evaluate, and save the diagnostic model
+- `src/eval.py` / `src/imbalance.py` — metrics and imbalance handling
+- `src/ui_streamlit.py` — patient-level predictions and SHAP explanations
 
-## Evaluation guidance
+## Evaluation
 
-- Always report `precision`, `recall`, and `F1` in addition to accuracy and AUC when classes are imbalanced.
-- Use stratified cross-validation and report per-class metrics.
-- For imbalance handling, consider estimator `class_weight` or resampling (SMOTE/oversampling/undersampling) depending on the experiment.
+Report accuracy, precision, recall, F1, and ROC-AUC. Prefer F1 on imbalanced targets. Use stratified splits and store JSON reports under `results/metrics/`.
 
-## Explainability
+## Models
 
-The project includes `shap` as an optional dependency. Use SHAP to generate feature importance summaries and per-sample explanations for final models; save results to `results/metrics` for reproducibility.
+Primary deployed model: **Random Forest** (`results/metrics/breast_cancer_model.joblib`).
 
-## Recent work
-
-- Added evaluation and imbalance helpers, and an example breast-cancer pipeline that prepares data, trains a classifier, computes F1, and stores model/metrics artifacts.
-
-## Next steps
-
-- Add SHAP visualizations for chosen models and export findings to `results/metrics`.
-- Prepare a concise `RESULTS.md` summarizing evaluation numbers and recommendations for the final report.
-
-## Artifacts & versioning
-
-Avoid committing large model binaries to git. Store models and large artifacts in external artifact storage or keep them in `results/` locally and add to `.gitignore` for repository cleanliness.
-
----
-
-If you want the README shortened further or tailored to a specific audience (instructors, teammates, or reviewers), tell me which audience and I'll refine it.
-
-## Actionable next steps (proposal & professor feedback)
-
-- Standardize evaluation: use stratified cross-validation and report accuracy, precision, recall, F1, and ROC-AUC for all models; store JSON reports in `results/metrics` (see `src/eval.py`).
-- Baseline model: implement Logistic Regression baseline (proposal) and compare with Random Forest / MLP baselines; prefer F1 as primary metric.
-- Explainability: run SHAP on final models to produce global and local explanations; export SHAP plots and short interpretation notes to `results/metrics`.
-- Future work extensions: experiment with deep-learning feature extraction (autoencoders, 1D-CNNs or pretrained encoders) and evaluate their impact on downstream classifiers.
-- Documentation & deliverables: produce `RESULTS.md` summarizing experiments, a short methods section, and final presentation slides; include the Lab 6 solution as referenced by the instructor.
-
-These steps map directly to the proposal and to the professor's comments: prioritize balancing the dataset, use F1 for selection, and add SHAP-based explanations and a future-work plan involving deep-learning feature extraction.
+Compared baselines in notebooks: Decision Tree, MLP, Logistic Regression (survival task).
