@@ -11,9 +11,9 @@ from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
-TARGET_CANDIDATES = ["Machine failure", "machine_failure", "target", "failure"]
-FAILURE_TYPE_CANDIDATES = ["Failure Type", "Failure_Type", "failure_type", "failuretype"]
-DROP_COLUMNS = ["UDI", "Product ID", "TWF", "HDF", "PWF", "OSF", "RNF"]
+TARGET_CANDIDATES = ["diagnosis", "status", "target", "label"]
+ID_DROP_COLUMNS = ["id", "ID", "Unnamed: 32", "empty_trailing_header_column"]
+SURVIVAL_LEAKAGE_COLUMNS = ["survival_months", "status"]
 
 
 def load_data(path: str) -> pd.DataFrame:
@@ -31,15 +31,15 @@ def infer_target_column(
 
 def prepare_features_and_target(df: pd.DataFrame, target_column: str | None = None):
     target_column = target_column or infer_target_column(df)
-    # Start with the standard drop list and also drop any Failure Type-like columns
     drop_columns = [
         column
-        for column in DROP_COLUMNS
+        for column in ID_DROP_COLUMNS
         if column in df.columns and column != target_column
     ]
-    for cand in FAILURE_TYPE_CANDIDATES:
-        if cand in df.columns and cand != target_column and cand not in drop_columns:
-            drop_columns.append(cand)
+    if target_column == "survived_5yr":
+        for column in SURVIVAL_LEAKAGE_COLUMNS:
+            if column in df.columns and column not in drop_columns:
+                drop_columns.append(column)
     X = df.drop(columns=[target_column] + drop_columns, errors="ignore")
     y = df[target_column]
     return X, y, target_column, drop_columns

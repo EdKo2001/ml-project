@@ -67,7 +67,7 @@ def detect_target_column(
 ) -> str:
     """Detect a target column using case/whitespace-insensitive matching."""
     if candidates is None:
-        candidates = ["machine failure", "machine_failure", "target", "label"]
+        candidates = ["diagnosis", "status", "target", "label"]
 
     header_df = pd.read_csv(str(data_path), nrows=1)
     normalized = {str(col).strip().lower(): col for col in header_df.columns}
